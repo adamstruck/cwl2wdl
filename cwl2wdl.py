@@ -19,6 +19,7 @@ Options:
 import os
 import re
 import yaml
+
 from docopt import docopt
 
 
@@ -40,8 +41,25 @@ type_map = {"File": "File",
             "array-double": "Array[Float]+"}
 
 
-class WdlGenerator:
-    def __init__(self, task_name, inputs, command, outputs, runtime):
+class WdlWorkflowGenerator:
+    def __init__(self, workflow):
+        self.template = """
+workflow %s {
+    %s
+
+    call %s {
+        %s
+    }
+}
+"""
+        self.name = workflow.name
+        self.inputs = workflow.inputs
+        self.outputs = workflow.outputs
+        self.steps = workflow.steps
+
+
+class WdlTaskGenerator:
+    def __init__(self, task):
         self.template = """
 task %s {
     %s
@@ -59,18 +77,21 @@ task %s {
     }
 }
 """
-        self.task_name = task_name
-        self.inputs = inputs
-        self.command = command
-        self.outputs = outputs
-        self.runtime = runtime
-        self.wdl = None
+        self.name = task.name
+        self.inputs = task.inputs
+        self.command = task.command
+        self.outputs = task.outputs
+        self.runtime = task.requirements
 
     def format_inputs(self):
         inputs = []
         template = "{0} {1}"
         for var in self.inputs:
-            inputs.append(template.format(var.variable_type,
+            if var.optional:
+                variable_type = re.sub("(\+$|$)", "?", var.variable_type)
+            else:
+                variable_type = var.variable_type
+            inputs.append(template.format(variable_type,
                                           var.name))
         return "\n    ".join(inputs)
 
@@ -78,14 +99,19 @@ task %s {
         command_parts = [self.command.baseCommand]
         command_pos = [0]
         for arg in self.command.inputs:
-            arg_template = "    {0} {1}"
+            if arg.optional:
+                arg_template = "    ${%s + %s}"
+            else:
+                arg_template = "    %s %s"
+
             if arg.flag is None:
                 flag = ""
+                arg_template = "    %s%s"
             else:
                 flag = arg.flag
+
             command_pos.append(arg.position)
-            command_parts.append(arg_template.format(flag,
-                                                     arg.name))
+            command_parts.append(arg_template % (flag, arg.name))
 
         cmd_order = [i[0] for i in sorted(enumerate(command_pos),
                                           key=lambda x: (x[1] is None, x[1]))]
@@ -113,8 +139,8 @@ task %s {
                                                   attribute.value))
         return "\n        ".join(attributes)
 
-    def generate(self):
-        wdl = self.template % (self.task_name, self.format_inputs(),
+    def generate_wdl(self):
+        wdl = self.template % (self.name, self.format_inputs(),
                                self.format_command(), self.format_outputs(),
                                self.format_runtime())
 
@@ -128,26 +154,15 @@ task %s {
 
 
 class Task:
-    def __init__(self, data):
-        self.data = data
-        self.baseCommand = data['baseCommand']
-        self.inputs = data['inputs']
-        self.outputs = data['outputs']
-        self.requirements = data['requirements']
+    def __init__(self, cwl):
+        self.cwl_def = cwl
+        self.name = cwl['label']
+        self.command = Command(cwl['baseCommand'], cwl['inputs'])
+        self.inputs = [Input(i) for i in cwl['inputs']]
+        self.outputs = [Output(o) for o in cwl['outputs']]
+        self.requirements = cwl['requirements']
 
-    def convert_inputs(self):
-        wdl_inputs = []
-        for field in self.inputs:
-            wdl_inputs.append(Input(field))
-        return wdl_inputs
-
-    def convert_outputs(self):
-        wdl_outputs = []
-        for field in self.outputs:
-            wdl_outputs.append(Output(field))
-        return wdl_outputs
-
-    def convert_requirements(self):
+    def process_requirements(self):
         wdl_runtime = []
         for field in self.requirements:
             # import addtional CWL definitions and update Task
@@ -155,10 +170,7 @@ class Task:
                 continue
             else:
                 wdl_runtime.append(Requirement(field))
-        return wdl_runtime
-
-    def convert_command(self):
-        return Command(self.baseCommand, self.convert_inputs())
+        self.requirements = wdl_runtime
 
 
 class Input:
@@ -188,22 +200,30 @@ class Input:
         else:
             self.default = None
 
+        # Initialize input as required
+        optional = False
         # Types need to be remapped
         if cwl_input['type'].__class__ == str:
-            self.variable_type = type_map[cwl_input['type']]
-        else:
+            cwl_type = cwl_input['type']
+        elif cwl_input['type'].__class__ == list:
+            if 'null' in cwl_input['type']:
+                optional = True
+                cwl_type = [value for index, value in enumerate(cwl_input['type']) if value != 'null'][0]
+            if cwl_type.__class__ == dict:
+                cwl_type = "-".join([cwl_type['type'],
+                                     cwl_type['items']])
+        elif cwl_input['type'].__class__ == dict:
             cwl_type = "-".join([cwl_input['type']['type'],
                                  cwl_input['type']['items']])
-            self.variable_type = type_map[cwl_type]
+
+        self.optional = optional
+        self.variable_type = type_map[cwl_type]
 
 
 class Command:
     def __init__(self, baseCommand, inputs):
         self.baseCommand = " ".join(baseCommand)
-        if all(isinstance(f, Input) == True for f in inputs):
-            self.inputs = inputs
-        else:
-            raise TypeError("Command inputs must be of class 'Input'")
+        self.inputs = [Input(i) for i in inputs]
 
 
 class Output:
@@ -216,36 +236,67 @@ class Output:
 
 
 class Requirement:
-    def __init__(self, requirement):
-        if 'class' in requirement:
+    def __init__(self, cwl_requirement):
+        if 'class' in cwl_requirement:
             # check for docker spec
-            if requirement['class'] == 'DockerRequirement':
+            if cwl_requirement['class'] == 'DockerRequirement':
                 self.prefix = "docker"
-                self.value = requirement['dockerImageId']
+                self.value = cwl_requirement['dockerImageId']
             # javascript is not supported in WDL
-            elif requirement['class'] == 'InlineJavascriptRequirement':
+            elif cwl_requirement['class'] == 'InlineJavascriptRequirement':
                 pass
         else:
             self.prefix = None
             self.value = None
 
 
+class Workflow:
+    def __init__(self, cwl_workflow):
+        self.name = cwl_workflow['label']
+        self.inputs = [Input(i) for i in cwl_workflow['inputs']]
+        self.outputs = [Output(o) for o in cwl_workflow['outputs']]
+        self.steps = cwl_workflow['steps']
+
+
 def cwl2wdl():
     arguments = docopt(__doc__, version='0.1')
 
     handle = open(arguments['FILE'])
-    data = yaml.load(handle.read())
+    cwl = yaml.load(handle.read())
     handle.close()
 
-    task = Task(data)
-    task_name = os.path.basename(arguments['FILE'])
+    if cwl.__class__ == list:
+        tasks = []
+        for task in cwl:
+            if task['class'] == 'CommandLineTool':
+                if 'label' not in task:
+                    task['label'] = "_".join(task['baseCommand'])
+                task = Task(task)
+                tasks.append(task)
+            elif task['class'] == 'Workflow':
+                if 'label' not in task:
+                    task['label'] = re.sub("(.yaml|.cwl)", "",
+                                           os.path.basename(arguments['FILE']))
+                workflow = Workflow(task)
+    else:
+        if 'label' not in cwl:
+            cwl['label'] = re.sub("(.yaml|.cwl)", "",
+                                  os.path.basename(arguments['FILE']))
+        tasks = [Task(cwl)]
+        workflow = None
 
-    wdl_generator = WdlGenerator(
-        task_name, task.convert_inputs(), task.convert_command(),
-        task.convert_outputs(), task.convert_requirements())
+    wdl_parts = []
+    for task in tasks:
+        task.process_requirements()
+        wdl_task = WdlTaskGenerator(task)
 
-    print(wdl_generator.generate())
+        wdl_parts.append(wdl_task.generate_wdl())
 
+    # wdl_workflow = WdlWorkflowGenerator(workflow)
+    # wdl_parts.append(wdl_workflow.generate_wdl())
+
+    wdl_doc = "\n".join(wdl_parts)
+    print(wdl_doc)
 
 if __name__ == "__main__":
     cwl2wdl()
