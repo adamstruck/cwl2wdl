@@ -77,8 +77,8 @@ task %s {
     def format_command(self):
         command_parts = [self.command.baseCommand]
         command_pos = [0]
-        arg_template = "    {0} {1}"
         for arg in self.command.inputs:
+            arg_template = "    {0} {1}"
             if arg.flag is None:
                 flag = ""
             else:
@@ -87,7 +87,8 @@ task %s {
             command_parts.append(arg_template.format(flag,
                                                      arg.name))
 
-        cmd_order = [i[0] for i in sorted(enumerate(command_pos), key=lambda x: (x[1] is None, x[1]))]
+        cmd_order = [i[0] for i in sorted(enumerate(command_pos),
+                                          key=lambda x: (x[1] is None, x[1]))]
         ordered_command_parts = [command_parts[i] for i in cmd_order]
 
         return " \\\n        ".join(ordered_command_parts)
