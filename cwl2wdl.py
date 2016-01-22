@@ -18,27 +18,60 @@ Options:
 
 import os
 import re
+import warnings
 import yaml
 
 from docopt import docopt
 
+# Setup warning message format
+formatwarning_orig = warnings.formatwarning
+warnings.formatwarning = lambda message, category, filename, lineno, line=None:\
+                         formatwarning_orig(message, category, filename,
+                                            lineno, line='')
 
-# Map Literals not currently supported
-# Key is CWL type
-# Value is corresponding WDL type
-type_map = {"File": "File",
-            "string": "String",
-            "boolean": "Boolean",
-            "int": "Int",
-            "long": "Float",
-            "float": "Float",
-            "double": "Float",
-            "array-File": "Array[File]+",
-            "array-string": "Array[String]+",
-            "array-int": "Array[Int]+",
-            "array-long": "Array[Float]+",
-            "array-float": "Array[Float]+",
-            "array-double": "Array[Float]+"}
+
+def remap_type(input_type):
+    "Remaps CWL types to WDL types. Also determines if variable is optional."
+    # Map Literals not currently supported
+    # Key is CWL type
+    # Value is corresponding WDL type
+    type_map = {"File": "File",
+                "string": "String",
+                "boolean": "Boolean",
+                "int": "Int",
+                "long": "Float",
+                "float": "Float",
+                "double": "Float",
+                "array-File": "Array[File]",
+                "array-string": "Array[String]",
+                "array-int": "Array[Int]",
+                "array-long": "Array[Float]",
+                "array-float": "Array[Float]",
+                "array-double": "Array[Float]"}
+
+    optional = False
+    if input_type.__class__ == str:
+        cwl_type = input_type
+
+    elif input_type.__class__ == list:
+        if 'null' in input_type:
+            optional = True
+            # keep the first non-null type
+            cwl_type = [value for index, value in enumerate(input_type) if value != 'null'][0]
+        if cwl_type.__class__ == dict:
+            cwl_type = "-".join([cwl_type['type'],
+                                 cwl_type['items']])
+
+    elif input_type.__class__ == dict:
+        cwl_type = "-".join([input_type['type'],
+                             input_type['items']])
+
+    optional = optional
+    try:
+        variable_type = type_map[cwl_type]
+        return variable_type, optional
+    except KeyError:
+        raise KeyError('Unsupported type: %s' % (cwl_type))
 
 
 class WdlWorkflowGenerator:
@@ -56,6 +89,36 @@ workflow %s {
         self.inputs = workflow.inputs
         self.outputs = workflow.outputs
         self.steps = workflow.steps
+
+    def format_inputs(self):
+        inputs = []
+        template = "{0} {1}"
+        for var in self.inputs:
+            if var.optional:
+                variable_type = re.sub("($)", "?", var.variable_type)
+            else:
+                variable_type = var.variable_type
+            inputs.append(template.format(variable_type,
+                                          var.name))
+        return "\n    ".join(inputs)
+
+    def format_step(self):
+        # TODO
+        step_template = """
+    call %s {
+        %s
+    }
+"""
+        steps = []
+        for step in self.steps:
+            steps.append(step_template % ())
+        return "\n".join(steps)
+
+    def generate_wdl(self):
+        wdl = self.template % (self.name, self.format_inputs(),
+                               self.format_steps())
+
+        return wdl
 
 
 class WdlTaskGenerator:
@@ -160,7 +223,10 @@ class Task:
         self.command = Command(cwl['baseCommand'], cwl['inputs'])
         self.inputs = [Input(i) for i in cwl['inputs']]
         self.outputs = [Output(o) for o in cwl['outputs']]
-        self.requirements = cwl['requirements']
+        if 'requirements' in cwl:
+            self.requirements = cwl['requirements']
+        else:
+            self.requirements = []
 
     def process_requirements(self):
         wdl_runtime = []
@@ -200,39 +266,39 @@ class Input:
         else:
             self.default = None
 
-        # Initialize input as required
-        optional = False
         # Types need to be remapped
-        if cwl_input['type'].__class__ == str:
-            cwl_type = cwl_input['type']
-        elif cwl_input['type'].__class__ == list:
-            if 'null' in cwl_input['type']:
-                optional = True
-                cwl_type = [value for index, value in enumerate(cwl_input['type']) if value != 'null'][0]
-            if cwl_type.__class__ == dict:
-                cwl_type = "-".join([cwl_type['type'],
-                                     cwl_type['items']])
-        elif cwl_input['type'].__class__ == dict:
-            cwl_type = "-".join([cwl_input['type']['type'],
-                                 cwl_input['type']['items']])
-
-        self.optional = optional
-        self.variable_type = type_map[cwl_type]
+        self.variable_type, self.optional = remap_type(cwl_input['type'])
 
 
 class Command:
     def __init__(self, baseCommand, inputs):
-        self.baseCommand = " ".join(baseCommand)
+        if baseCommand.__class__ == list:
+            self.baseCommand = " ".join(baseCommand)
+        else:
+            self.baseCommand = baseCommand
         self.inputs = [Input(i) for i in inputs]
 
 
 class Output:
     def __init__(self, cwl_output):
         # TODO: parse outputBinding
-        self.output = cwl_output['outputBinding']
+        if 'outputBinding' in cwl_output:
+            if 'glob' in cwl_output['outputBinding']:
+                if cwl_output['outputBinding']['glob'].__class__ == str:
+                    self.output = 'glob(\'%s\')' % (cwl_output['outputBinding']['glob'])
+                else:
+                    warnings.warn("Cannot evaluate expression within outputBinding.")
+                    self.output = 'glob(\'%s\')' % (cwl_output['outputBinding']['glob'])
+            else:
+                warnings.warn("Unsupported outputBinding.")
+                self.output = cwl_output['outputBinding']
+        elif 'path' in cwl_output:
+            self.output = cwl_output['path']
+        else:
+            self.output = None
         self.name = cwl_output['id'].strip("#")
-        # Types are remapped
-        self.variable_type = type_map[cwl_output['type']]
+        # Types must be remapped
+        self.variable_type, self.optional = remap_type(cwl_output['type'])
 
 
 class Requirement:
@@ -244,7 +310,8 @@ class Requirement:
                 self.value = cwl_requirement['dockerImageId']
             # javascript is not supported in WDL
             elif cwl_requirement['class'] == 'InlineJavascriptRequirement':
-                pass
+                warnings.warn("This CWL file contains Javascript code."
+                              " WDL does not support this feature.")
         else:
             self.prefix = None
             self.value = None
@@ -256,6 +323,13 @@ class Workflow:
         self.inputs = [Input(i) for i in cwl_workflow['inputs']]
         self.outputs = [Output(o) for o in cwl_workflow['outputs']]
         self.steps = cwl_workflow['steps']
+
+
+class Step:
+    def __init__(self, cwl_step):
+        self.name = None
+        self.inputs = None
+        self.outputs = None
 
 
 def cwl2wdl():
