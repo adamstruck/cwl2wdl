@@ -1,18 +1,11 @@
-# First, we try to use setuptools. If it's not available locally,
-# we fall back on ez_setup.
-try:
-    from setuptools import setup
-except ImportError:
-    from ez_setup import use_setuptools
-    use_setuptools()
-    from setuptools import setup
+from setuptools import setup
 
 with open("README.pypi.rst") as readmeFile:
     long_description = readmeFile.read()
 
 setup(
     name="cwl2wdl",
-    description="Convert CWL tool and workflow descriptions to WDL representations",
+    description="Convert a CWL tool and workflow description to its WDL representation",
     license='MIT License',
     long_description=long_description,
     packages=["cwl2wdl"],

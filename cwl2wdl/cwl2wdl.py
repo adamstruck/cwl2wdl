@@ -1,5 +1,3 @@
-#!/usr/bin/env python
-
 """
 Convert a CWL task definition into a WDL representation.
 
@@ -15,6 +13,9 @@ Options:
     -h --help
     --version  Show version.
 """
+from __future__ import division
+from __future__ import print_function
+from __future__ import unicode_literals
 
 import os
 import re
@@ -332,7 +333,7 @@ class Step:
         self.outputs = None
 
 
-def cwl2wdl():
+def cwl2wdl_main():
     arguments = docopt(__doc__, version='0.1')
 
     handle = open(arguments['FILE'])
@@ -371,6 +372,3 @@ def cwl2wdl():
 
     wdl_doc = "\n".join(wdl_parts)
     print(wdl_doc)
-
-if __name__ == "__main__":
-    cwl2wdl()
