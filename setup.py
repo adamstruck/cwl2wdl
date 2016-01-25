@@ -1,24 +1,23 @@
 from setuptools import setup
+from codecs import open
+from os import path
 
-with open("README.pypi.rst") as readmeFile:
+here = path.abspath(path.dirname(__file__))
+
+with open(path.join(here, "README.rst"), encoding="utf-8") as readmeFile:
     long_description = readmeFile.read()
 
 setup(
     name="cwl2wdl",
     description="Convert a CWL tool and workflow description to its WDL representation",
-    license='MIT License',
+    license='MIT',
     long_description=long_description,
     packages=["cwl2wdl"],
     include_package_data=True,
     zip_safe=False,
     author="Adam Struck",
     author_email="strucka@ohsu.edu",
-    url="https://github.com/adamstruck/cwl2wdl",
-    entry_points={
-        'console_scripts': [
-            'cwl2wdl=cwl2wdl.cwl2wdl:cwl2wdl'
-        ]
-    },
+    url="https://github.com/adamstruck/cwl2wdl",    
     classifiers=[
         'Development Status :: 3 - Alpha',
         'Intended Audience :: Science/Research',
@@ -32,6 +31,11 @@ setup(
     # Use setuptools_scm to set the version number automatically from Git
     setup_requires=['setuptools_scm'],
     use_scm_version={
-        "write_to": "_version.py"
+        "write_to": "cwl2wdl/_version.py"
+    },
+    entry_points={
+        'console_scripts': [
+            'cwl2wdl=cwl2wdl.cwl2wdl:cwl2wdl_main'
+        ]
     },
 )
