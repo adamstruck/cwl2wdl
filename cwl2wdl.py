@@ -307,7 +307,12 @@ class Requirement:
             # check for docker spec
             if cwl_requirement['class'] == 'DockerRequirement':
                 self.prefix = "docker"
-                self.value = cwl_requirement['dockerImageId']
+                if 'dockerImageId' in cwl_requirement:
+                    self.value = cwl_requirement['dockerImageId']
+                elif 'dockerPull' in cwl_requirement:
+                    self.value = cwl_requirement['dockerPull']
+                else:
+                    warnings.warn("Docker requirement identified, but no image is specified.")
             # javascript is not supported in WDL
             elif cwl_requirement['class'] == 'InlineJavascriptRequirement':
                 warnings.warn("This CWL file contains Javascript code."
