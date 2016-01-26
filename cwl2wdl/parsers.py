@@ -160,31 +160,34 @@ def process_cwl_outputs(cwl_outputs):
 
 def process_cwl_requirements(cwl_requirements):
     requirements = []
-    for cwl_requirement in cwl_requirements:
-        if '$import' in cwl_requirement:
-            warnings.warn("'import' statements not yet supported.")
+    for cwl_requirement in cwl_requirements:        
         # check for docker requirement
-        if cwl_requirement['class'] == 'DockerRequirement':
-            requirement_type = "docker"
-            if 'dockerImageId' in cwl_requirement:
-                value = cwl_requirement['dockerImageId']
-            elif 'dockerPull' in cwl_requirement:
-                value = cwl_requirement['dockerPull']
-            else:
-                req_type_err = [key for key in cwl_requirement.keys() if key.startswith("docker")]
-                warnings.warn(
-                    "Unsupported docker requirement type: %s" % (" ".join(req_type_err)))
+        if 'class' in cwl_requirement:
+            if cwl_requirement['class'] == 'DockerRequirement':
+                requirement_type = "docker"
+                if 'dockerImageId' in cwl_requirement:
+                    value = cwl_requirement['dockerImageId']
+                elif 'dockerPull' in cwl_requirement:
+                    value = cwl_requirement['dockerPull']
+                else:
+                    req_type_err = [key for key in cwl_requirement.keys() if key.startswith("docker")]
+                    warnings.warn(
+                        "Unsupported docker requirement type: %s" % (" ".join(req_type_err)))
+                    requirement_type = None
+                    value = None
+                    # javascript is not supported
+            elif cwl_requirement['class'] == 'InlineJavascriptRequirement':
+                warnings.warn("This CWL file contains Javascript code."
+                              " WDL does not support this feature.")
                 requirement_type = None
                 value = None
-        # javascript is not supported
-        elif cwl_requirement['class'] == 'InlineJavascriptRequirement':
-            warnings.warn("This CWL file contains Javascript code."
-                          " WDL does not support this feature.")
+                # Other CWL requirement classes are not yet supported
+        elif '$import' in cwl_requirement:
+            warnings.warn("'import' statements not yet supported.")
             requirement_type = None
             value = None
-        # Other CWL requirement classes are not yet supported
         else:
-            warnings.warn("The CWL requirement class: %s, is not supported" % (cwl_requirement['class']))
+            warnings.warn("The CWL requirement: %s, is not supported" % (cwl_requirement))
             requirement_type = None
             value = None
 

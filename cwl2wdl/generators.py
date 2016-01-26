@@ -82,14 +82,14 @@ task %s {
 
     def format_inputs(self):
         inputs = []
-        template = "{0} {1}"
+        template = "%s %s"
         for var in self.inputs:
             if var.is_required:
                 variable_type = re.sub("(\+$|$)", "?", var.variable_type)
             else:
                 variable_type = var.variable_type
-            inputs.append(template.format(variable_type,
-                                          var.name))
+            inputs.append(template % (variable_type,
+                                      var.name))
         return "\n    ".join(inputs)
 
     def format_command(self):
@@ -118,22 +118,22 @@ task %s {
 
     def format_outputs(self):
         outputs = []
-        template = "{0} {1} = {2}"
+        template = "%s %s = %s"
         for var in self.outputs:
-            outputs.append(template.format(var.variable_type,
-                                           var.name,
-                                           var.output))
+            outputs.append(template % (var.variable_type,
+                                       var.name,
+                                       var.output))
         return "\n        ".join(outputs)
 
     def format_runtime(self):
-        template = "{0}: {1}"
+        template = "%s: %s"
         requirements = []
         for requirement in self.runtime:
-            if vars(requirement) == {}:
+            if (requirement.requirement_type is None) or (requirement.value is None):
                 continue
             else:
-                requirements.append(template.format(requirement.requirement_type,
-                                                    requirement.value))
+                requirements.append(template % (requirement.requirement_type,
+                                                requirement.value))
         return "\n        ".join(requirements)
 
     def generate_wdl(self):
