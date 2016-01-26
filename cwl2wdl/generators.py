@@ -28,7 +28,7 @@ workflow %s {
         inputs = []
         template = "{0} {1}"
         for var in self.inputs:
-            if var.optional:
+            if var.is_required:
                 variable_type = re.sub("($)", "?", var.variable_type)
             else:
                 variable_type = var.variable_type
@@ -84,7 +84,7 @@ task %s {
         inputs = []
         template = "{0} {1}"
         for var in self.inputs:
-            if var.optional:
+            if var.is_required:
                 variable_type = re.sub("(\+$|$)", "?", var.variable_type)
             else:
                 variable_type = var.variable_type
@@ -96,7 +96,7 @@ task %s {
         command_parts = [self.command.baseCommand]
         command_pos = [0]
         for arg in self.command.inputs:
-            if arg.optional:
+            if arg.is_required:
                 arg_template = "    ${%s + %s}"
             else:
                 arg_template = "    %s %s"
@@ -127,14 +127,14 @@ task %s {
 
     def format_runtime(self):
         template = "{0}: {1}"
-        attributes = []
-        for attribute in self.runtime:
-            if vars(attribute) == {}:
+        requirements = []
+        for requirement in self.runtime:
+            if vars(requirement) == {}:
                 continue
             else:
-                attributes.append(template.format(attribute.prefix,
-                                                  attribute.value))
-        return "\n        ".join(attributes)
+                requirements.append(template.format(requirement.requirement_type,
+                                                    requirement.value))
+        return "\n        ".join(requirements)
 
     def generate_wdl(self):
         wdl = self.template % (self.name, self.format_inputs(),
