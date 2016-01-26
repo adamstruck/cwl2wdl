@@ -8,12 +8,12 @@ from __future__ import unicode_literals
 
 
 class Task:
-    def __init__(self, task_instance):
-        self.name = task_instance.name
-        self.command = Command(task_instance.baseCommand, task_instance.inputs)
-        self.inputs = [Input(i) for i in task_instance.inputs]
-        self.outputs = [Output(o) for o in task_instance.outputs]
-        self.requirements = [Requirement(r) for r in task_instance.requirements]
+    def __init__(self, parsed_task_instance):
+        self.name = parsed_task_instance.name
+        self.command = Command(parsed_task_instance.baseCommand, parsed_task_instance.inputs)
+        self.inputs = [Input(i) for i in parsed_task_instance.inputs]
+        self.outputs = [Output(o) for o in parsed_task_instance.outputs]
+        self.requirements = [Requirement(r) for r in parsed_task_instance.requirements]
 
 
 class Input:

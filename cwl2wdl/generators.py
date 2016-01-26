@@ -8,53 +8,6 @@ from __future__ import unicode_literals
 import re
 
 
-class WdlWorkflowGenerator:
-    def __init__(self, workflow):
-        self.template = """
-workflow %s {
-    %s
-
-    call %s {
-        %s
-    }
-}
-"""
-        self.name = workflow.name
-        self.inputs = workflow.inputs
-        self.outputs = workflow.outputs
-        self.steps = workflow.steps
-
-    def format_inputs(self):
-        inputs = []
-        template = "{0} {1}"
-        for var in self.inputs:
-            if var.is_required:
-                variable_type = re.sub("($)", "?", var.variable_type)
-            else:
-                variable_type = var.variable_type
-            inputs.append(template.format(variable_type,
-                                          var.name))
-        return "\n    ".join(inputs)
-
-    def format_step(self):
-        # TODO
-        step_template = """
-    call %s {
-        %s
-    }
-"""
-        steps = []
-        for step in self.steps:
-            steps.append(step_template % ())
-        return "\n".join(steps)
-
-    def generate_wdl(self):
-        wdl = self.template % (self.name, self.format_inputs(),
-                               self.format_steps())
-
-        return wdl
-
-
 class WdlTaskGenerator:
     def __init__(self, task):
         self.template = """
@@ -146,5 +99,52 @@ task %s {
         if self.format_runtime() == '':
             no_runtime = "\s+runtime {\s+}"
             wdl = re.sub(no_runtime, "", wdl)
+
+        return wdl
+
+
+class WdlWorkflowGenerator:
+    def __init__(self, workflow):
+        self.template = """
+workflow %s {
+    %s
+
+    call %s {
+        %s
+    }
+}
+"""
+        self.name = workflow.name
+        self.inputs = workflow.inputs
+        self.outputs = workflow.outputs
+        self.steps = workflow.steps
+
+    def format_inputs(self):
+        inputs = []
+        template = "{0} {1}"
+        for var in self.inputs:
+            if var.is_required:
+                variable_type = re.sub("($)", "?", var.variable_type)
+            else:
+                variable_type = var.variable_type
+            inputs.append(template.format(variable_type,
+                                          var.name))
+        return "\n    ".join(inputs)
+
+    def format_step(self):
+        # TODO
+        step_template = """
+    call %s {
+        %s
+    }
+"""
+        steps = []
+        for step in self.steps:
+            steps.append(step_template % ())
+        return "\n".join(steps)
+
+    def generate_wdl(self):
+        wdl = self.template % (self.name, self.format_inputs(),
+                               self.format_steps())
 
         return wdl

@@ -44,7 +44,13 @@ class CwlTaskParser:
             if 'requirements' in cwl_task:
                 self.requirements = process_cwl_requirements(cwl_task['requirements'])
             else:
-                self.requirements = None
+                self.requirements = [{"requirement_type": None, "value": None}]
+
+
+# class CwlWorkflowParser:
+#         def __init__(self, cwl_workflow):
+#             self.name = None
+#             self.steps = process_workflow_steps(cwl_workflow['steps'])
 
 
 def remap_type_cwl2wdl(input_type):
@@ -182,7 +188,7 @@ def process_cwl_requirements(cwl_requirements):
                 requirement_type = None
                 value = None
                 # Other CWL requirement classes are not yet supported
-        elif '$import' in cwl_requirement:
+        elif ('$import' in cwl_requirement) or ('import' in cwl_requirement):
             warnings.warn("'import' statements not yet supported.")
             requirement_type = None
             value = None
