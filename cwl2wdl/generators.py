@@ -8,7 +8,7 @@ from __future__ import unicode_literals
 import re
 
 
-class WdlTaskGenerator:
+class WdlTaskGenerator(object):
     def __init__(self, task):
         self.template = """
 task %s {
@@ -103,15 +103,13 @@ task %s {
         return wdl
 
 
-class WdlWorkflowGenerator:
+class WdlWorkflowGenerator(object):
     def __init__(self, workflow):
         self.template = """
 workflow %s {
     %s
 
-    call %s {
-        %s
-    }
+    %s
 }
 """
         self.name = workflow.name
@@ -134,9 +132,9 @@ workflow %s {
     def format_step(self):
         # TODO
         step_template = """
-    call %s {
-        %s
-    }
+call %s {
+    %s
+}
 """
         steps = []
         for step in self.steps:

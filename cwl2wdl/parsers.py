@@ -9,7 +9,7 @@ from __future__ import unicode_literals
 import warnings
 
 
-class CwlParser:
+class CwlParser(object):
     def __init__(self, cwl):
         self.cwl = cwl
         if cwl.__class__ == list:
@@ -32,25 +32,36 @@ class CwlParser:
             self.workflow = None
 
 
-class CwlTaskParser:
-        def __init__(self, cwl_task):
-            if 'label' in cwl_task:
-                self.name = cwl_task['label']
-            else:
-                self.name = "_".join(cwl_task['baseCommand'])
-            self.baseCommand = cwl_task['baseCommand']
-            self.inputs = process_cwl_inputs(cwl_task['inputs'])
-            self.outputs = process_cwl_outputs(cwl_task['outputs'])
-            if 'requirements' in cwl_task:
-                self.requirements = process_cwl_requirements(cwl_task['requirements'])
-            else:
-                self.requirements = [{"requirement_type": None, "value": None}]
+class CwlTaskParser(object):
+    def __init__(self, cwl_task):
+        if 'label' in cwl_task:
+            self.name = cwl_task['label']
+        else:
+            self.name = "_".join(cwl_task['baseCommand'])
+        self.baseCommand = cwl_task['baseCommand']
+        self.inputs = process_cwl_inputs(cwl_task['inputs'])
+        self.outputs = process_cwl_outputs(cwl_task['outputs'])
+        if 'requirements' in cwl_task:
+            self.requirements = process_cwl_requirements(cwl_task['requirements'])
+        else:
+            self.requirements = [{"requirement_type": None, "value": None}]
 
 
-# class CwlWorkflowParser:
-#         def __init__(self, cwl_workflow):
-#             self.name = None
-#             self.steps = process_workflow_steps(cwl_workflow['steps'])
+class CwlWorkflowParser(object):
+    def __init__(self, cwl_workflow):
+        if 'label' in cwl_workflow:
+            self.name = cwl_workflow['label']
+        elif 'id' in cwl_workflow:
+            self.name = cwl_workflow['id']
+        else:
+            raise NameError("This CWL Workflow has no label or id.")
+        self.inputs = process_cwl_inputs(cwl_workflow['inputs'])
+        self.outputs = process_cwl_outputs(cwl_workflow['outputs'])
+        self.steps = process_cwl_workflow_steps(cwl_workflow['steps'])
+        if 'requirements' in cwl_workflow:
+            self.requirements = process_cwl_requirements(cwl_workflow['requirements'])
+        else:
+            self.requirements = [{"requirement_type": None, "value": None}]
 
 
 def remap_type_cwl2wdl(input_type):
@@ -156,7 +167,7 @@ def process_cwl_outputs(cwl_outputs):
         # Types must be remapped
         variable_type, is_required = remap_type_cwl2wdl(cwl_output['type'])
 
-        parsed_output = {"name": name,                         
+        parsed_output = {"name": name,
                          "variable_type": variable_type,
                          "is_required": is_required,
                          "output": output}
@@ -166,7 +177,7 @@ def process_cwl_outputs(cwl_outputs):
 
 def process_cwl_requirements(cwl_requirements):
     requirements = []
-    for cwl_requirement in cwl_requirements:        
+    for cwl_requirement in cwl_requirements:
         # check for docker requirement
         if 'class' in cwl_requirement:
             if cwl_requirement['class'] == 'DockerRequirement':
@@ -181,7 +192,7 @@ def process_cwl_requirements(cwl_requirements):
                         "Unsupported docker requirement type: %s" % (" ".join(req_type_err)))
                     requirement_type = None
                     value = None
-                    # javascript is not supported
+                    # inline javascript is not supported
             elif cwl_requirement['class'] == 'InlineJavascriptRequirement':
                 warnings.warn("This CWL file contains Javascript code."
                               " WDL does not support this feature.")
@@ -202,3 +213,16 @@ def process_cwl_requirements(cwl_requirements):
 
         requirements.append(parsed_requirement)
     return requirements
+
+
+def process_cwl_workflow_steps(workflow_steps):
+    steps = []
+    for step in workflow_steps:
+        task_name = None
+        inputs = None
+        outputs = None
+        parsed_step = {"task_name": task_name,
+                       "inputs": inputs,
+                       "outputs": outputs}
+        steps.append(parsed_step)
+    return steps

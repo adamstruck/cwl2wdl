@@ -7,7 +7,7 @@ from __future__ import print_function
 from __future__ import unicode_literals
 
 
-class Task:
+class Task(object):
     def __init__(self, parsed_task_instance):
         self.name = parsed_task_instance.name
         self.command = Command(parsed_task_instance.baseCommand, parsed_task_instance.inputs)
@@ -16,7 +16,7 @@ class Task:
         self.requirements = [Requirement(r) for r in parsed_task_instance.requirements]
 
 
-class Input:
+class Input(object):
     def __init__(self, input_dict):
         self.name = input_dict['name']
         self.flag = input_dict['flag']
@@ -27,7 +27,7 @@ class Input:
         self.is_required = input_dict['is_required']
 
 
-class Command:
+class Command(object):
     def __init__(self, baseCommand, inputs):
         if baseCommand.__class__ == list:
             self.baseCommand = " ".join(baseCommand)
@@ -36,7 +36,7 @@ class Command:
         self.inputs = [Input(i) for i in inputs]
 
 
-class Output:
+class Output(object):
     def __init__(self, output_dict):
         self.name = output_dict['name']
         self.output = output_dict['output']
@@ -44,7 +44,7 @@ class Output:
         self.is_required = output_dict['is_required']
 
 
-class Requirement:
+class Requirement(object):
     def __init__(self, cwl_requirement):
         self.requirement_type = cwl_requirement['requirement_type']
         self.value = cwl_requirement['value']
