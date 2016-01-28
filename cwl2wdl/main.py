@@ -17,14 +17,15 @@ from __future__ import division
 from __future__ import print_function
 from __future__ import unicode_literals
 
+import os
 import warnings
-import yaml
-import pkg_resources
+
 from docopt import docopt
 
-from generators import WdlTaskGenerator
-from parsers import CwlParser, CwlTaskParser
-from task import Task
+import cwl2wdl
+from cwl2wdl.generators import WdlTaskGenerator
+from cwl2wdl.parsers import parse_cwl
+from cwl2wdl.task import Task
 
 
 # Setup warning message format
@@ -35,16 +36,17 @@ warnings.formatwarning = lambda message, category, filename, lineno, line=None:\
 
 
 def cli():
-    arguments = docopt(__doc__, version=str(pkg_resources.get_distribution('cwl2wdl')))
+    arguments = docopt(__doc__, version=str(cwl2wdl.__version__))
 
-    handle = open(arguments['FILE'])
-    cwl_yaml = yaml.load(handle.read())
-    handle.close()
+    if os.path.exists(arguments['FILE']):
+        pass
+    else:
+        raise IOError("%s does not exist." % (arguments['FILE']))
 
-    cwl = CwlParser(cwl_yaml, arguments['FILE'])
+    cwl = parse_cwl(arguments['FILE'])
     tasks = []
-    for cwl_task in cwl.tasks:
-        tasks.append(Task(CwlTaskParser(cwl_task, arguments['FILE'])))
+    for cwl_task in cwl['tasks']:
+        tasks.append(Task(cwl_task))
 
     wdl_parts = []
     for task in tasks:

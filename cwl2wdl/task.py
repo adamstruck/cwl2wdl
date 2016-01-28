@@ -8,14 +8,14 @@ from __future__ import unicode_literals
 
 
 class Task(object):
-    def __init__(self, task_parser_instance):
-        self.name = task_parser_instance.name
-        self.command = Command(task_parser_instance.baseCommand,
-                               task_parser_instance.arguments,
-                               task_parser_instance.inputs)
-        self.inputs = [Input(i) for i in task_parser_instance.inputs]
-        self.outputs = [Output(o) for o in task_parser_instance.outputs]
-        self.requirements = [Requirement(r) for r in task_parser_instance.requirements]
+    def __init__(self, parsed_task):
+        self.name = parsed_task['name']
+        self.command = Command(parsed_task['baseCommand'],
+                               parsed_task['arguments'],
+                               parsed_task['inputs'])
+        self.inputs = [Input(i) for i in parsed_task['inputs']]
+        self.outputs = [Output(o) for o in parsed_task['outputs']]
+        self.requirements = [Requirement(r) for r in parsed_task['requirements']]
 
 
 class Input(object):

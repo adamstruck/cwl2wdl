@@ -7,79 +7,93 @@ from __future__ import print_function
 from __future__ import unicode_literals
 
 import os
+import re
 import warnings
 import yaml
 
 
-class CwlParser(object):
-    def __init__(self, cwl, sourceFile):
-        self.source = sourceFile
-        self.cwl = cwl
-        if isinstance(cwl, list):
-            self.tasks = [part for part in cwl if part['class'] == 'CommandLineTool']
-            self.workflow = [part for part in cwl if part['class'] == 'Workflow']
-        elif isinstance(cwl, dict):
-            if cwl['class'] == 'CommandLineTool':
-                self.tasks = [cwl]
-                self.workflow = None
-            elif cwl['class'] == 'Workflow':
-                self.tasks = None
-                self.workflow = cwl
+def parse_cwl(sourceFile):
+    parentFileName = re.sub("(\.yaml)", "", os.path.basename(sourceFile))
+    sourceDir = os.path.dirname(os.path.abspath(sourceFile))
+
+    handle = open(sourceFile)
+    cwl = yaml.load(handle.read())
+    handle.close()
+
+    if isinstance(cwl, list):
+        tasks = [parse_cwl_task(part, sourceDir) for part in cwl if part['class'] == 'CommandLineTool']
+        workflow = [parse_cwl_workflow(part, sourceDir, parentFileName) for part in cwl if part['class'] == 'Workflow']
+    elif isinstance(cwl, dict):
+        if cwl['class'] == 'CommandLineTool':
+            tasks = [parse_cwl_task(cwl, sourceDir)]
+            workflow = None
+        elif cwl['class'] == 'Workflow':
+            tasks = None
+            workflow = cwl
+        else:
+            raise TypeError("Unrecognized CWL class: %s" % (cwl['class']))
+    else:
+        raise TypeError("This doesn't appear to be a CWL document.")
+
+    return {"tasks": tasks, "workflow": workflow}
+
+
+def parse_cwl_task(cwl_task, sourceDir):
+    if 'label' in cwl_task:
+        name = re.sub(" ", "_", cwl_task['label'])
+    elif 'id' in cwl_task:
+        name = re.sub(" ", "_", cwl_task['id'])
+    else:
+        name = "_".join(cwl_task['baseCommand'])
+
+    if 'arguments' in cwl_task:
+        if isinstance(cwl_task['arguments'], list):
+            if isinstance(cwl_task['arguments'][0], str):
+                arguments = cwl_task['arguments']
             else:
-                warnings.warn("Unrecognized CWL class.")
-                self.tasks = None
-                self.workflow = None
+                warnings.warn(
+                    "Task arguments of type: %s are not supported" % (type(cwl_task['arguments']))
+                )
+                arguments = []
+        elif isinstance(cwl_task['arguments'], str):
+            arguments = [cwl_task['arguments']]
         else:
-            warnings.warn("Unrecognized CWL class.")
-            self.tasks = None
-            self.workflow = None
+            arguments = []
+    else:
+        arguments = []
+
+    baseCommand = cwl_task['baseCommand']
+    inputs = process_cwl_inputs(cwl_task['inputs'])
+    outputs = process_cwl_outputs(cwl_task['outputs'])
+
+    if 'requirements' in cwl_task:
+        requirements = process_cwl_requirements(cwl_task['requirements'], sourceDir)
+    else:
+        requirements = []
+
+    return {"name": name, "baseCommand": baseCommand, "arguments": arguments,
+            "inputs": inputs, "outputs": outputs, "requirements": requirements}
 
 
-class CwlTaskParser(object):
-    def __init__(self, cwl_task, sourceFile):
-        if 'label' in cwl_task:
-            self.name = cwl_task['label']
-        else:
-            self.name = "_".join(cwl_task['baseCommand'])
-        self.baseCommand = cwl_task['baseCommand']
-        if 'arguments' in cwl_task:
-            if isinstance(cwl_task['arguments'], list):
-                if isinstance(cwl_task['arguments'][0], str):
-                    self.arguments = cwl_task['arguments']
-                else:
-                    warnings.warn(
-                        "Task arguments of type: %s are not supported" % (type(cwl_task['arguments']))
-                    )
-                    self.arguments = None
-            elif isinstance(cwl_task['arguments'], str):
-                self.arguments = [cwl_task['arguments']]
-            else:
-                self.arguments = None
-        else:
-            self.arguments = None
-        self.inputs = process_cwl_inputs(cwl_task['inputs'])
-        self.outputs = process_cwl_outputs(cwl_task['outputs'])
-        if 'requirements' in cwl_task:
-            self.requirements = process_cwl_requirements(cwl_task['requirements'], sourceFile)
-        else:
-            self.requirements = [{"requirement_type": None, "value": None}]
+def parse_cwl_workflow(cwl_workflow, sourceDir, parentFileName):
+    if 'label' in cwl_workflow:
+        name = re.sub(" ", "_", cwl_workflow['label'])
+    elif 'id' in cwl_workflow:
+        name = re.sub(" ", "_", cwl_workflow['id'])
+    else:
+        raise NameError("This CWL Workflow has no label or id.")
 
+    inputs = process_cwl_inputs(cwl_workflow['inputs'])
+    outputs = process_cwl_outputs(cwl_workflow['outputs'])
+    steps = process_cwl_workflow_steps(cwl_workflow['steps'])
 
-class CwlWorkflowParser(object):
-    def __init__(self, cwl_workflow):
-        if 'label' in cwl_workflow:
-            self.name = cwl_workflow['label']
-        elif 'id' in cwl_workflow:
-            self.name = cwl_workflow['id']
-        else:
-            raise NameError("This CWL Workflow has no label or id.")
-        self.inputs = process_cwl_inputs(cwl_workflow['inputs'])
-        self.outputs = process_cwl_outputs(cwl_workflow['outputs'])
-        self.steps = process_cwl_workflow_steps(cwl_workflow['steps'])
-        if 'requirements' in cwl_workflow:
-            self.requirements = process_cwl_requirements(cwl_workflow['requirements'])
-        else:
-            self.requirements = [{"requirement_type": None, "value": None}]
+    if 'requirements' in cwl_workflow:
+        requirements = process_cwl_requirements(cwl_workflow['requirements'], sourceDir)
+    else:
+        requirements = [{"requirement_type": None, "value": None}]
+
+    return {"name": name, "inputs": inputs, "outputs": outputs,
+            "steps": steps, "requirements": requirements}
 
 
 def remap_type_cwl2wdl(input_type):
@@ -193,7 +207,7 @@ def process_cwl_outputs(cwl_outputs):
     return outputs
 
 
-def process_cwl_requirements(cwl_requirements, sourceFile=None):
+def process_cwl_requirements(cwl_requirements, sourceDir=None):
     requirements = []
     for cwl_requirement in cwl_requirements:
         # check for docker requirement
@@ -217,9 +231,7 @@ def process_cwl_requirements(cwl_requirements, sourceFile=None):
             else:
                 warnings.warn("The CWL requirement class: %s, is not supported" % (cwl_requirement['class']))
                 continue
-        elif ('import' in cwl_requirement) or ('$import' in cwl_requirement):
-            # warnings.warn("'import' statements are not supported.")
-            source_dir = os.path.dirname(os.path.abspath(sourceFile))
+        elif ('import' in cwl_requirement) or ('$import' in cwl_requirement):            
             try:
                 to_import = cwl_requirement['import']
             except:
@@ -227,8 +239,8 @@ def process_cwl_requirements(cwl_requirements, sourceFile=None):
 
             if os.path.exists(to_import):
                 file_to_import = to_import
-            elif os.path.exists(os.path.join(source_dir, to_import)):
-                file_to_import = os.path.join(source_dir, to_import)
+            elif os.path.exists(os.path.join(sourceDir, to_import)):
+                file_to_import = os.path.join(sourceDir, to_import)
             else:
                 warnings.warn("Couldn't find file: %s" % (to_import))
                 continue
