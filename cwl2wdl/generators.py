@@ -46,7 +46,7 @@ task %s {
         return "\n    ".join(inputs)
 
     def format_command(self):
-        command_parts = [self.command.baseCommand] + self.command.arguments
+        command_parts = [self.command.baseCommand] + ["    " + arg for arg in self.command.arguments]
         initial_n = len([self.command.baseCommand] + self.command.arguments)
         command_pos = range(initial_n)
         for arg in self.command.inputs:
