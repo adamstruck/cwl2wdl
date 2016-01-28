@@ -41,10 +41,10 @@ def cwl2wdl_main():
     cwl_yaml = yaml.load(handle.read())
     handle.close()
 
-    cwl = CwlParser(cwl_yaml)
+    cwl = CwlParser(cwl_yaml, arguments['FILE'])
     tasks = []
     for cwl_task in cwl.tasks:
-        tasks.append(Task(CwlTaskParser(cwl_task)))
+        tasks.append(Task(CwlTaskParser(cwl_task, arguments['FILE'])))
 
     wdl_parts = []
     for task in tasks:

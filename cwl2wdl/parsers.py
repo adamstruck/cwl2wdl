@@ -6,16 +6,19 @@ from __future__ import division
 from __future__ import print_function
 from __future__ import unicode_literals
 
+import os
 import warnings
+import yaml
 
 
 class CwlParser(object):
-    def __init__(self, cwl):
+    def __init__(self, cwl, sourceFile):
+        self.source = sourceFile
         self.cwl = cwl
-        if cwl.__class__ == list:
+        if isinstance(cwl, list):
             self.tasks = [part for part in cwl if part['class'] == 'CommandLineTool']
             self.workflow = [part for part in cwl if part['class'] == 'Workflow']
-        elif cwl.__class__ == dict:
+        elif isinstance(cwl, dict):
             if cwl['class'] == 'CommandLineTool':
                 self.tasks = [cwl]
                 self.workflow = None
@@ -33,16 +36,31 @@ class CwlParser(object):
 
 
 class CwlTaskParser(object):
-    def __init__(self, cwl_task):
+    def __init__(self, cwl_task, sourceFile):
         if 'label' in cwl_task:
             self.name = cwl_task['label']
         else:
             self.name = "_".join(cwl_task['baseCommand'])
         self.baseCommand = cwl_task['baseCommand']
+        if 'arguments' in cwl_task:
+            if isinstance(cwl_task['arguments'], list):
+                if isinstance(cwl_task['arguments'][0], str):
+                    self.arguments = cwl_task['arguments']
+                else:
+                    warnings.warn(
+                        "Task arguments of type: %s are not supported" % (type(cwl_task['arguments']))
+                    )
+                    self.arguments = None
+            elif isinstance(cwl_task['arguments'], str):
+                self.arguments = [cwl_task['arguments']]
+            else:
+                self.arguments = None
+        else:
+            self.arguments = None
         self.inputs = process_cwl_inputs(cwl_task['inputs'])
         self.outputs = process_cwl_outputs(cwl_task['outputs'])
         if 'requirements' in cwl_task:
-            self.requirements = process_cwl_requirements(cwl_task['requirements'])
+            self.requirements = process_cwl_requirements(cwl_task['requirements'], sourceFile)
         else:
             self.requirements = [{"requirement_type": None, "value": None}]
 
@@ -84,19 +102,19 @@ def remap_type_cwl2wdl(input_type):
                 "array-double": "Array[Float]"}
 
     is_required = False
-    if input_type.__class__ == str:
+    if isinstance(input_type, str):
         cwl_type = input_type
 
-    elif input_type.__class__ == list:
+    elif isinstance(input_type, list):
         if 'null' in input_type:
             is_required = True
             # keep the first non-null type
             cwl_type = [value for index, value in enumerate(input_type) if value != 'null'][0]
-        if cwl_type.__class__ == dict:
+        if isinstance(cwl_type, dict):
             cwl_type = "-".join([cwl_type['type'],
                                  cwl_type['items']])
 
-    elif input_type.__class__ == dict:
+    elif isinstance(input_type, dict):
         cwl_type = "-".join([input_type['type'],
                              input_type['items']])
 
@@ -151,13 +169,13 @@ def process_cwl_outputs(cwl_outputs):
     for cwl_output in cwl_outputs:
         if 'outputBinding' in cwl_output:
             if 'glob' in cwl_output['outputBinding']:
-                if cwl_output['outputBinding']['glob'].__class__ == str:
+                if isinstance(cwl_output['outputBinding']['glob'], str):
                     output = 'glob(\'%s\')' % (cwl_output['outputBinding']['glob'])
                 else:
                     warnings.warn("Cannot evaluate expression within outputBinding.")
                     output = 'glob(\'%s\')' % (cwl_output['outputBinding']['glob'])
             else:
-                warnings.warn("Unsupported outputBinding.")
+                warnings.warn("Unsupported outputBinding: %s" % (cwl_output['outputBinding']))
                 output = cwl_output['outputBinding']
         elif 'path' in cwl_output:
             output = cwl_output['path']
@@ -175,7 +193,7 @@ def process_cwl_outputs(cwl_outputs):
     return outputs
 
 
-def process_cwl_requirements(cwl_requirements):
+def process_cwl_requirements(cwl_requirements, sourceFile=None):
     requirements = []
     for cwl_requirement in cwl_requirements:
         # check for docker requirement
@@ -190,39 +208,66 @@ def process_cwl_requirements(cwl_requirements):
                     req_type_err = [key for key in cwl_requirement.keys() if key.startswith("docker")]
                     warnings.warn(
                         "Unsupported docker requirement type: %s" % (" ".join(req_type_err)))
-                    requirement_type = None
-                    value = None
-                    # inline javascript is not supported
+                    continue
+            # inline javascript is not supported
             elif cwl_requirement['class'] == 'InlineJavascriptRequirement':
                 warnings.warn("This CWL file contains Javascript code."
                               " WDL does not support this feature.")
-                requirement_type = None
-                value = None
-                # Other CWL requirement classes are not yet supported
-        elif ('$import' in cwl_requirement) or ('import' in cwl_requirement):
-            warnings.warn("'import' statements not yet supported.")
-            requirement_type = None
-            value = None
+                continue
+            else:
+                warnings.warn("The CWL requirement class: %s, is not supported" % (cwl_requirement['class']))
+                continue
+        elif ('import' in cwl_requirement) or ('$import' in cwl_requirement):
+            # warnings.warn("'import' statements are not supported.")
+            source_dir = os.path.dirname(os.path.abspath(sourceFile))
+            try:
+                to_import = cwl_requirement['import']
+            except:
+                to_import = cwl_requirement['$import']
+
+            if os.path.exists(to_import):
+                file_to_import = to_import
+            elif os.path.exists(os.path.join(source_dir, to_import)):
+                file_to_import = os.path.join(source_dir, to_import)
+            else:
+                warnings.warn("Couldn't find file: %s" % (to_import))
+                continue
+
+            handle = open(file_to_import)
+            imported_yaml = yaml.load(handle.read())
+            handle.close()
+
+            if isinstance(imported_yaml, list):
+                imported_requirements = process_cwl_requirements(imported_yaml)
+            else:
+                imported_requirements = process_cwl_requirements([imported_yaml])
+
+            requirements += imported_requirements
+            continue
         else:
             warnings.warn("The CWL requirement: %s, is not supported" % (cwl_requirement))
-            requirement_type = None
-            value = None
+            continue
 
         parsed_requirement = {"requirement_type": requirement_type,
                               "value": value}
-
         requirements.append(parsed_requirement)
+
     return requirements
 
 
 def process_cwl_workflow_steps(workflow_steps):
     steps = []
     for step in workflow_steps:
-        task_name = None
-        inputs = None
+        task_id = re.sub('(\.cwl|#)', '', step['run']['import'])
+        inputs = []
         outputs = None
-        parsed_step = {"task_name": task_name,
+        parsed_step = {"task_id": task_id,
                        "inputs": inputs,
                        "outputs": outputs}
         steps.append(parsed_step)
     return steps
+
+
+def expression_converter(expression):
+    # TODO
+    pass

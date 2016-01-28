@@ -46,8 +46,9 @@ task %s {
         return "\n    ".join(inputs)
 
     def format_command(self):
-        command_parts = [self.command.baseCommand]
-        command_pos = [0]
+        command_parts = [self.command.baseCommand] + self.command.arguments
+        initial_n = len([self.command.baseCommand] + self.command.arguments)
+        command_pos = range(initial_n)
         for arg in self.command.inputs:
             if arg.is_required:
                 arg_template = "    ${%s + %s}"
@@ -60,7 +61,7 @@ task %s {
             else:
                 flag = arg.flag
 
-            command_pos.append(arg.position)
+            command_pos.append(int(0 if arg.position is None else arg.position) + initial_n)
             command_parts.append(arg_template % (flag, arg.name))
 
         cmd_order = [i[0] for i in sorted(enumerate(command_pos),
