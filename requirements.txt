@@ -1,0 +1,2 @@
+# for output validation (https://github.com/broadinstitute/pywdl)
+wdl==1.0.22

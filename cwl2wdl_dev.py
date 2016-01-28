@@ -1,7 +1,7 @@
 """
 Run cwl2wdl during development
 """
-import cwl2wdl.cwl2wdl
+import cwl2wdl.main
 
 if __name__ == "__main__":
-    cwl2wdl.cwl2wdl.cwl2wdl_main()
+    cwl2wdl.main.cli()

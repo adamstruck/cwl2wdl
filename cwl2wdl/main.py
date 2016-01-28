@@ -19,7 +19,7 @@ from __future__ import unicode_literals
 
 import warnings
 import yaml
-
+import pkg_resources
 from docopt import docopt
 
 from generators import WdlTaskGenerator
@@ -34,8 +34,8 @@ warnings.formatwarning = lambda message, category, filename, lineno, line=None:\
                                             lineno, line='')
 
 
-def cwl2wdl_main():
-    arguments = docopt(__doc__, version='0.1')
+def cli():
+    arguments = docopt(__doc__, version=str(pkg_resources.get_distribution('cwl2wdl')))
 
     handle = open(arguments['FILE'])
     cwl_yaml = yaml.load(handle.read())
