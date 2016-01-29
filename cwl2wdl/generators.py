@@ -7,6 +7,8 @@ from __future__ import unicode_literals
 
 import re
 
+from cwl2wdl.task import Task
+
 
 class WdlTaskGenerator(object):
     def __init__(self, task):
@@ -46,9 +48,11 @@ task %s {
         return "\n    ".join(inputs)
 
     def format_command(self):
-        command_parts = [self.command.baseCommand] + ["    " + arg for arg in self.command.arguments]
+        formatted_args = ["    " + arg for arg in self.command.arguments]
+        command_parts = [self.command.baseCommand] + formatted_args
         initial_n = len([self.command.baseCommand] + self.command.arguments)
         command_pos = range(initial_n)
+
         for arg in self.command.inputs:
             if arg.is_required:
                 arg_template = "    ${%s + %s}"
@@ -107,9 +111,9 @@ task %s {
 class WdlWorkflowGenerator(object):
     def __init__(self, workflow):
         self.template = """
+%s
 workflow %s {
     %s
-
     %s
 }
 """
@@ -117,6 +121,8 @@ workflow %s {
         self.inputs = workflow.inputs
         self.outputs = workflow.outputs
         self.steps = workflow.steps
+        self.task_ids = []
+        self.imported_tasks = []
 
     def format_inputs(self):
         inputs = []
@@ -130,20 +136,34 @@ workflow %s {
                                           var.name))
         return "\n    ".join(inputs)
 
-    def format_step(self):
+    def format_steps(self):
         # TODO
-        step_template = """
-call %s {
-    %s
-}
-"""
         steps = []
         for step in self.steps:
-            steps.append(step_template % ())
+            self.task_ids.append(step.task_id)
+
+            if step.task_definition is not None:
+                self.imported_tasks.append(
+                    WdlTaskGenerator(Task(step.task_definition)).generate_wdl()
+                )
+
+            if step.inputs != []:
+                step_template = """
+    call %s {
+        inputs: %s
+    }
+"""
+                inputs = []
+                for i in step.inputs:
+                    inputs.append("%s=%s" % (re.sub(step.task_id + "\.", "", i.input_id), i.source))
+                steps.append(step_template % (step.task_id, ", ".join(inputs)))
+            else:
+                step_template = "call %s"
+                steps.append(step_template % (step.task_id))
         return "\n".join(steps)
 
     def generate_wdl(self):
-        wdl = self.template % (self.name, self.format_inputs(),
-                               self.format_steps())
+        wdl = self.template % ("\n".join(self.imported_tasks), self.name,
+                               self.format_inputs(),self.format_steps())
 
         return wdl

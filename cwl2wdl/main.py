@@ -23,9 +23,10 @@ import warnings
 from docopt import docopt
 
 import cwl2wdl
-from cwl2wdl.generators import WdlTaskGenerator
+from cwl2wdl.generators import WdlTaskGenerator, WdlWorkflowGenerator
 from cwl2wdl.parsers import parse_cwl
 from cwl2wdl.task import Task
+from cwl2wdl.workflow import Workflow
 
 
 # Setup warning message format
@@ -52,6 +53,10 @@ def cli():
     for task in tasks:
         wdl_task = WdlTaskGenerator(task)
         wdl_parts.append(wdl_task.generate_wdl())
+
+    workflow = Workflow(cwl['workflow'])
+    wdl_workflow = WdlWorkflowGenerator(workflow)
+    wdl_parts.append(wdl_workflow.generate_wdl())
 
     wdl_doc = "\n".join(wdl_parts)
     print(wdl_doc)

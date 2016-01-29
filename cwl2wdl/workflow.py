@@ -11,7 +11,7 @@ from cwl2wdl.task import Input, Output, Requirement
 
 class Workflow(object):
     def __init__(self, parsed_workflow):
-        self.name = parsed_workflow['label']
+        self.name = parsed_workflow['name']
         self.inputs = [Input(i) for i in parsed_workflow['inputs']]
         self.outputs = [Output(o) for o in parsed_workflow['outputs']]
         self.steps = [Step(s) for s in parsed_workflow['steps']]
@@ -20,7 +20,9 @@ class Workflow(object):
 
 class Step(object):
     def __init__(self, workflow_step):
-        self.task_id = workflow_step['task_id']
+        self.task_id = workflow_step['task_id']        
+        self.task_definition = workflow_step['task_definition']
+        self.import_statement = workflow_step['import_statement']
         self.inputs = [StepInput(i) for i in workflow_step['inputs']]
         self.outputs = [StepOutput(o) for o in workflow_step['outputs']]
 

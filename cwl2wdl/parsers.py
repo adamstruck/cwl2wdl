@@ -22,14 +22,14 @@ def parse_cwl(sourceFile):
 
     if isinstance(cwl, list):
         tasks = [parse_cwl_task(part, sourceDir) for part in cwl if part['class'] == 'CommandLineTool']
-        workflow = [parse_cwl_workflow(part, sourceDir, parentFileName) for part in cwl if part['class'] == 'Workflow']
+        workflow = [parse_cwl_workflow(part, sourceDir, parentFileName) for part in cwl if part['class'] == 'Workflow'][0]
     elif isinstance(cwl, dict):
         if cwl['class'] == 'CommandLineTool':
             tasks = [parse_cwl_task(cwl, sourceDir)]
             workflow = None
         elif cwl['class'] == 'Workflow':
             tasks = None
-            workflow = cwl
+            workflow = parse_cwl_workflow(cwl, sourceDir, parentFileName)
         else:
             raise TypeError("Unrecognized CWL class: %s" % (cwl['class']))
     else:
@@ -42,7 +42,7 @@ def parse_cwl_task(cwl_task, sourceDir):
     if 'label' in cwl_task:
         name = re.sub(" ", "_", cwl_task['label'])
     elif 'id' in cwl_task:
-        name = re.sub(" ", "_", cwl_task['id'])
+        name = re.sub(" ", "_", cwl_task['id']).strip("#")
     else:
         name = "_".join(cwl_task['baseCommand'])
 
@@ -79,13 +79,13 @@ def parse_cwl_workflow(cwl_workflow, sourceDir, parentFileName):
     if 'label' in cwl_workflow:
         name = re.sub(" ", "_", cwl_workflow['label'])
     elif 'id' in cwl_workflow:
-        name = re.sub(" ", "_", cwl_workflow['id'])
+        name = re.sub(" ", "_", cwl_workflow['id']).strip("#")
     else:
-        raise NameError("This CWL Workflow has no label or id.")
+        name = parentFileName
 
     inputs = process_cwl_inputs(cwl_workflow['inputs'])
     outputs = process_cwl_outputs(cwl_workflow['outputs'])
-    steps = process_cwl_workflow_steps(cwl_workflow['steps'])
+    steps = process_cwl_workflow_steps(cwl_workflow['steps'], sourceDir)
 
     if 'requirements' in cwl_workflow:
         requirements = process_cwl_requirements(cwl_workflow['requirements'], sourceDir)
@@ -267,15 +267,42 @@ def process_cwl_requirements(cwl_requirements, sourceDir=None):
     return requirements
 
 
-def process_cwl_workflow_steps(workflow_steps):
+def process_cwl_workflow_steps(workflow_steps, sourceDir):
     steps = []
     for step in workflow_steps:
         task_id = re.sub('(\.cwl|#)', '', step['run']['import'])
+
+        if step['run']['import'].endswith("\.cwl"):
+            import_statement = "import " + step['run']['import']
+            to_import = step['run']['import']
+            if os.path.exists(to_import):
+                file_to_import = to_import
+            elif os.path.exists(os.path.join(sourceDir, to_import)):
+                file_to_import = os.path.join(sourceDir, to_import)
+            else:
+                raise IOError("Couldn't find file: %s" % (to_import))
+
+            imported_cwl_task = parse_cwl(file_to_import).tasks
+        else:
+            imported_cwl_task = None
+            import_statement = None
+
         inputs = []
-        outputs = None
+        for i in step['inputs']:
+            i['id'] = i['id'].strip('#')
+            i['source'] = i['source'].strip('#')
+            inputs.append(i)
+
+        outputs = []
+        for o in step['outputs']:
+            o['id'] = o['id'].strip('#')
+            outputs.append(o)
+
         parsed_step = {"task_id": task_id,
                        "inputs": inputs,
-                       "outputs": outputs}
+                       "outputs": outputs,
+                       "task_definition": imported_cwl_task,
+                       "import_statement": import_statement}
         steps.append(parsed_step)
     return steps
 
