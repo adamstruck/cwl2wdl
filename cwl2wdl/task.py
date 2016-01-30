@@ -21,7 +21,7 @@ class Task(object):
 class Input(object):
     def __init__(self, input_dict):
         self.name = input_dict['name']
-        self.flag = input_dict['flag']
+        self.prefix = input_dict['prefix']
         self.position = input_dict['position']
         self.separator = input_dict['separator']
         self.default = input_dict['default']
@@ -35,8 +35,15 @@ class Command(object):
             self.baseCommand = " ".join(baseCommand)
         else:
             self.baseCommand = baseCommand
-        self.arguments = arguments
+        self.arguments = [Argument(a) for a in arguments]
         self.inputs = [Input(i) for i in inputs]
+
+
+class Argument(object):
+    def __init__(self, argument_dict):
+        self.prefix = argument_dict['prefix']
+        self.position = argument_dict['position']
+        self.value = argument_dict['value']
 
 
 class Output(object):

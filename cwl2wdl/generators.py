@@ -40,35 +40,65 @@ task %s {
         template = "%s %s"
         for var in self.inputs:
             if var.is_required:
-                variable_type = re.sub("(\+$|$)", "?", var.variable_type)
-            else:
                 variable_type = var.variable_type
+            else:
+                variable_type = re.sub("($)", "?", var.variable_type)
+
             inputs.append(template % (variable_type,
                                       var.name))
         return "\n    ".join(inputs)
 
     def format_command(self):
-        formatted_args = ["    " + arg for arg in self.command.arguments]
-        command_parts = [self.command.baseCommand] + formatted_args
-        initial_n = len([self.command.baseCommand] + self.command.arguments)
-        command_pos = range(initial_n)
+        command_position = [0]
+        command_parts = [self.command.baseCommand]
 
-        for arg in self.command.inputs:
-            if arg.is_required:
-                arg_template = "    ${%s + %s}"
-            else:
+        for arg in self.command.arguments:
+            command_position.append(
+                int(0 if arg.position is None else arg.position) + 1
+            )
+
+            if arg.prefix is not None:
                 arg_template = "    %s %s"
-
-            if arg.flag is None:
-                flag = ""
-                arg_template = "    %s%s"
+                prefix = arg.prefix
             else:
-                flag = arg.flag
+                arg_template = "    %s%s"
+                prefix = ""
+            if arg.value is not None:
+                value = arg.value
+            else:
+                value = ""
 
-            command_pos.append(int(0 if arg.position is None else arg.position) + initial_n)
-            command_parts.append(arg_template % (flag, arg.name))
+            formatted_arg = arg_template % (prefix, value)
+            command_parts.append(formatted_arg)
 
-        cmd_order = [i[0] for i in sorted(enumerate(command_pos),
+        input_offset = max(command_position)
+        for command_input in self.command.inputs:
+            if command_input.is_required:
+                if command_input.prefix is None:
+                    prefix = ""
+                    command_input_template = "    %s%s"
+                else:
+                    prefix = command_input.prefix
+                    command_input_template = "    %s %s"
+            else:
+                if command_input.prefix is None:
+                    prefix = ""
+                    command_input_template = "    %s%s"
+                else:
+                    prefix = command_input.prefix                   
+                    command_input_template = "    ${%s + %s}"
+
+            # store input postion if provided.
+            # inputs come after teh base command and arguments
+            command_position.append(
+                int(0 if command_input.position is None else command_input.position) + input_offset
+            )
+
+            command_parts.append(
+                command_input_template % (prefix, command_input.name)
+            )
+
+        cmd_order = [i[0] for i in sorted(enumerate(command_position),
                                           key=lambda x: (x[1] is None, x[1]))]
         ordered_command_parts = [command_parts[i] for i in cmd_order]
 
@@ -129,15 +159,15 @@ workflow %s {
         template = "{0} {1}"
         for var in self.inputs:
             if var.is_required:
-                variable_type = re.sub("($)", "?", var.variable_type)
-            else:
                 variable_type = var.variable_type
+            else:
+                variable_type = re.sub("($)", "?", var.variable_type)
+
             inputs.append(template.format(variable_type,
                                           var.name))
         return "\n    ".join(inputs)
 
     def format_steps(self):
-        # TODO
         steps = []
         for step in self.steps:
             self.task_ids.append(step.task_id)
@@ -155,8 +185,12 @@ workflow %s {
 """
                 inputs = []
                 for i in step.inputs:
-                    inputs.append("%s=%s" % (re.sub(step.task_id + "\.", "", i.input_id), i.source))
-                steps.append(step_template % (step.task_id, ", ".join(inputs)))
+                    inputs.append(
+                        "%s = %s" % (re.sub(step.task_id + "\.", "", i.input_id),
+                                     i.value)
+                    )
+                steps.append(step_template % (step.task_id,
+                                              ", \n".join(inputs)))
             else:
                 step_template = "call %s"
                 steps.append(step_template % (step.task_id))
@@ -164,6 +198,6 @@ workflow %s {
 
     def generate_wdl(self):
         wdl = self.template % ("\n".join(self.imported_tasks), self.name,
-                               self.format_inputs(),self.format_steps())
+                               self.format_inputs(), self.format_steps())
 
         return wdl

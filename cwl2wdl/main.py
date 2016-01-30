@@ -45,18 +45,23 @@ def cli():
         raise IOError("%s does not exist." % (arguments['FILE']))
 
     cwl = parse_cwl(arguments['FILE'])
-    tasks = []
-    for cwl_task in cwl['tasks']:
-        tasks.append(Task(cwl_task))
 
     wdl_parts = []
-    for task in tasks:
-        wdl_task = WdlTaskGenerator(task)
-        wdl_parts.append(wdl_task.generate_wdl())
+    tasks = []
+    worfklow = None
 
-    workflow = Workflow(cwl['workflow'])
-    wdl_workflow = WdlWorkflowGenerator(workflow)
-    wdl_parts.append(wdl_workflow.generate_wdl())
+    if cwl['tasks'] is not None:
+        for cwl_task in cwl['tasks']:
+            tasks.append(Task(cwl_task))
+
+        for task in tasks:
+            wdl_task = WdlTaskGenerator(task)
+            wdl_parts.append(wdl_task.generate_wdl())
+
+    if cwl['workflow'] is not None:
+        workflow = Workflow(cwl['workflow'])
+        wdl_workflow = WdlWorkflowGenerator(workflow)
+        wdl_parts.append(wdl_workflow.generate_wdl())
 
     wdl_doc = "\n".join(wdl_parts)
     print(wdl_doc)

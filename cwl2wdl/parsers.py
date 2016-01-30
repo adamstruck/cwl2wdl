@@ -1,5 +1,5 @@
 """
-Parser classes
+CWL parsers and helper functions
 """
 
 from __future__ import division
@@ -23,6 +23,7 @@ def parse_cwl(sourceFile):
     if isinstance(cwl, list):
         tasks = [parse_cwl_task(part, sourceDir) for part in cwl if part['class'] == 'CommandLineTool']
         workflow = [parse_cwl_workflow(part, sourceDir, parentFileName) for part in cwl if part['class'] == 'Workflow'][0]
+
     elif isinstance(cwl, dict):
         if cwl['class'] == 'CommandLineTool':
             tasks = [parse_cwl_task(cwl, sourceDir)]
@@ -47,18 +48,7 @@ def parse_cwl_task(cwl_task, sourceDir):
         name = "_".join(cwl_task['baseCommand'])
 
     if 'arguments' in cwl_task:
-        if isinstance(cwl_task['arguments'], list):
-            if isinstance(cwl_task['arguments'][0], str):
-                arguments = cwl_task['arguments']
-            else:
-                warnings.warn(
-                    "Task arguments of type: %s are not supported" % (type(cwl_task['arguments']))
-                )
-                arguments = []
-        elif isinstance(cwl_task['arguments'], str):
-            arguments = [cwl_task['arguments']]
-        else:
-            arguments = []
+        arguments = process_cwl_arguments(cwl_task['arguments'])
     else:
         arguments = []
 
@@ -68,6 +58,8 @@ def parse_cwl_task(cwl_task, sourceDir):
 
     if 'requirements' in cwl_task:
         requirements = process_cwl_requirements(cwl_task['requirements'], sourceDir)
+    elif 'hints' in cwl_task:
+        requirements = process_cwl_requirements(cwl_task['hints'], sourceDir)
     else:
         requirements = []
 
@@ -96,6 +88,29 @@ def parse_cwl_workflow(cwl_workflow, sourceDir, parentFileName):
             "steps": steps, "requirements": requirements}
 
 
+############################
+# Helper functions
+############################
+
+def check_if_required(input_type):
+    if isinstance(input_type, list):
+        if 'null' in input_type:
+            is_required = False
+        else:
+            is_required = True
+
+    elif isinstance(input_type, dict):
+        is_required = check_if_required(input_type['type'])
+
+    elif isinstance(input_type, str):
+        if input_type == 'null':
+            is_required = False
+        else:
+            is_required = True
+
+    return is_required
+
+
 def remap_type_cwl2wdl(input_type):
     "Remaps CWL types to WDL types. Also determines if variable is required."
     # Map Literals not currently supported
@@ -115,28 +130,89 @@ def remap_type_cwl2wdl(input_type):
                 "array-float": "Array[Float]",
                 "array-double": "Array[Float]"}
 
-    is_required = False
     if isinstance(input_type, str):
         cwl_type = input_type
 
     elif isinstance(input_type, list):
         if 'null' in input_type:
-            is_required = True
-            # keep the first non-null type
-            cwl_type = [value for index, value in enumerate(input_type) if value != 'null'][0]
+            # keep the non-null type
+            input_type.remove('null')
+            cwl_type = input_type[0]
+
         if isinstance(cwl_type, dict):
-            cwl_type = "-".join([cwl_type['type'],
-                                 cwl_type['items']])
+            if input_type['type'] == "array":
+                cwl_type = "-".join([cwl_type['type'],
+                                     cwl_type['items']])
+
+            elif cwl_type['type'] == "enum":
+                raise KeyError('Unsupported CWL type: enum')
+
+            elif cwl_type['type'] == "record":
+                raise KeyError('Unsupported CWL type: record')
 
     elif isinstance(input_type, dict):
-        cwl_type = "-".join([input_type['type'],
-                             input_type['items']])
+        if input_type['type'] == "array":
+            cwl_type = "-".join([input_type['type'],
+                                 input_type['items']])
+
+        elif input_type['type'] == "enum":
+            raise KeyError('Unsupported CWL type: enum')
+
+        elif input_type['type'] == "record":
+            raise KeyError('Unsupported CWL type: record')
 
     try:
         variable_type = type_map[cwl_type]
-        return variable_type, is_required
+        return variable_type
     except KeyError:
         raise KeyError('Unrecognized CWL type: %s' % (cwl_type))
+
+
+def process_cwl_command_line_binding(command_line_binding):
+    if 'prefix' in command_line_binding:
+        prefix = command_line_binding['prefix']
+    else:
+        prefix = None
+
+    if 'position' in command_line_binding:
+        position = command_line_binding['position']
+    else:
+        position = None
+
+    if 'itemSeparator' in command_line_binding:
+        separator = command_line_binding['itemSeparator']
+    else:
+        separator = None
+
+    if 'valueFrom' in command_line_binding:
+        value = command_line_binding['valueFrom']
+    else:
+        value = None
+
+    return {"prefix": prefix,
+            "position": position,
+            "separator": separator,
+            "value": value}
+
+
+def process_cwl_arguments(cwl_arguments):
+    arguments = []
+    if isinstance(cwl_arguments, list):
+        for arg in cwl_arguments:
+            if isinstance(arg, str):
+                arguments.append({'prefix': None, 'postion': None,
+                                  'separator': None, 'value': arg})
+            elif isinstance(arg, dict):
+                arguments.append(process_cwl_command_line_binding(arg))
+
+    elif isinstance(cwl_arguments['arguments'], str):
+        arguments.append({'prefix': None, 'postion': None,
+                          'separator': None, 'value': cwl_arguments})
+
+    elif isinstance(cwl_arguments['arguments'], dict):
+        arguments.append(process_cwl_command_line_binding(cwl_arguments))
+
+    return arguments
 
 
 def process_cwl_inputs(cwl_inputs):
@@ -145,33 +221,34 @@ def process_cwl_inputs(cwl_inputs):
         name = cwl_input['id'].strip("#")
 
         if 'inputBinding' in cwl_input:
-            if 'prefix' in cwl_input['inputBinding']:
-                flag = cwl_input['inputBinding']['prefix']
-            else:
-                flag = None
-            if 'position' in cwl_input['inputBinding']:
-                position = cwl_input['inputBinding']['position']
-            else:
-                position = None
-            if 'itemSeparator' in cwl_input['inputBinding']:
-                separator = cwl_input['inputBinding']['itemSeparator']
-            else:
-                separator = None
+            inputBinding = process_cwl_command_line_binding(cwl_input['inputBinding'])
+            prefix = inputBinding['prefix']
+            position = inputBinding['position']
+            separator = inputBinding['separator']
+            value = inputBinding['value']
         else:
-            flag = None
+            prefix = None
             position = None
             separator = None
+            value = None
 
         if 'default' in cwl_input:
-            default = cwl_input['default']
+            default = str(cwl_input['default'])
+        elif value is not None:
+            if isinstance(value, str):
+                default = value
+            else:
+                warnings.warn("Expressions are not supported.")
+                default = str(value)
         else:
             default = None
 
         # Types need to be remapped
-        variable_type, is_required = remap_type_cwl2wdl(cwl_input['type'])
+        variable_type = remap_type_cwl2wdl(cwl_input['type'])
+        is_required = check_if_required(cwl_input['type'])
 
         parsed_input = {"name": name, "variable_type": variable_type,
-                        "is_required": is_required, "flag": flag,
+                        "is_required": is_required, "prefix": prefix,
                         "position": position, "separator": separator,
                         "default": default}
         inputs.append(parsed_input)
@@ -196,8 +273,9 @@ def process_cwl_outputs(cwl_outputs):
         else:
             output = None
         name = cwl_output['id'].strip("#")
-        # Types must be remapped
-        variable_type, is_required = remap_type_cwl2wdl(cwl_output['type'])
+
+        is_required = check_if_required(cwl_output['type'])
+        variable_type = remap_type_cwl2wdl(cwl_output['type'])
 
         parsed_output = {"name": name,
                          "variable_type": variable_type,
@@ -225,13 +303,14 @@ def process_cwl_requirements(cwl_requirements, sourceDir=None):
                     continue
             # inline javascript is not supported
             elif cwl_requirement['class'] == 'InlineJavascriptRequirement':
-                warnings.warn("This CWL file contains Javascript code."
+                warnings.warn("This CWL file may contain InlineJavascript code."
                               " WDL does not support this feature.")
                 continue
             else:
                 warnings.warn("The CWL requirement class: %s, is not supported" % (cwl_requirement['class']))
                 continue
-        elif ('import' in cwl_requirement) or ('$import' in cwl_requirement):            
+
+        elif ('import' in cwl_requirement) or ('$import' in cwl_requirement):
             try:
                 to_import = cwl_requirement['import']
             except:
@@ -270,11 +349,24 @@ def process_cwl_requirements(cwl_requirements, sourceDir=None):
 def process_cwl_workflow_steps(workflow_steps, sourceDir):
     steps = []
     for step in workflow_steps:
-        task_id = re.sub('(\.cwl|#)', '', step['run']['import'])
+        if 'import' in step['run']:
+            task_id = re.sub('(\.cwl|#)', '', os.path.basename(step['run']['import']))
+            if 'import' in step['run']['import'].endswith(".cwl"):
+                import_statement = "import " + step['run']['import']
+                to_import = step['run']['import']
 
-        if step['run']['import'].endswith("\.cwl"):
-            import_statement = "import " + step['run']['import']
-            to_import = step['run']['import']
+        elif step['run'].endswith(".cwl"):
+            task_id = re.sub('(\.cwl|#)', '', os.path.basename(step['run']))
+            import_statement = "import " + step['run']
+            to_import = step['run']
+
+        else:
+            task_id = re.sub('(\.cwl|#)', '', os.path.basename(step['run']))
+            to_import = None
+            import_statement = None
+
+        print(to_import)
+        if to_import is not None:
             if os.path.exists(to_import):
                 file_to_import = to_import
             elif os.path.exists(os.path.join(sourceDir, to_import)):
@@ -282,16 +374,28 @@ def process_cwl_workflow_steps(workflow_steps, sourceDir):
             else:
                 raise IOError("Couldn't find file: %s" % (to_import))
 
-            imported_cwl_task = parse_cwl(file_to_import).tasks
+            print(file_to_import)
+            imported_cwl_task = parse_cwl(file_to_import)['tasks']
         else:
             imported_cwl_task = None
-            import_statement = None
 
         inputs = []
-        for i in step['inputs']:
-            i['id'] = i['id'].strip('#')
-            i['source'] = i['source'].strip('#')
-            inputs.append(i)
+        for step_input in step['inputs']:
+            input_id = step_input['id'].strip('#')
+            if 'source' in step_input:
+                value = step_input['source']
+            elif 'default' in step_input:
+                value = step_input['default']
+            else:
+                value = None
+
+            if value is not None:
+                if isinstance(value, list):
+                    value = " ".join([v.strip('#') for v in value])
+                else:
+                    value = str(value).strip('#')
+
+            inputs.append({'id': input_id, "value": value})
 
         outputs = []
         for o in step['outputs']:

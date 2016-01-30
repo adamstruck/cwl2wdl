@@ -30,7 +30,7 @@ class Step(object):
 class StepInput(object):
     def __init__(self, input_dict):
         self.input_id = input_dict['id']
-        self.source = input_dict['source']
+        self.value = input_dict['value']
 
 
 class StepOutput(object):
