@@ -24,9 +24,8 @@ from docopt import docopt
 
 import cwl2wdl
 from cwl2wdl.generators import WdlTaskGenerator, WdlWorkflowGenerator
-from cwl2wdl.parsers import parse_cwl
-from cwl2wdl.task import Task
-from cwl2wdl.workflow import Workflow
+from cwl2wdl.parsers import CwlParser
+from cwl2wdl.base_classes import ParsedDocument
 
 
 # Setup warning message format
@@ -44,24 +43,19 @@ def cli():
     else:
         raise IOError("%s does not exist." % (arguments['FILE']))
 
-    cwl = parse_cwl(arguments['FILE'])
+    parsed_cwl = ParsedDocument(
+        CwlParser(arguments['FILE']).parse_document()
+    )
 
     wdl_parts = []
-    tasks = []
-    worfklow = None
+    if parsed_cwl.tasks is not None:
+        for task in parsed_cwl.tasks:
+            wdl_task = WdlTaskGenerator(task).generate_wdl()
+            wdl_parts.append(wdl_task)
 
-    if cwl['tasks'] is not None:
-        for cwl_task in cwl['tasks']:
-            tasks.append(Task(cwl_task))
-
-        for task in tasks:
-            wdl_task = WdlTaskGenerator(task)
-            wdl_parts.append(wdl_task.generate_wdl())
-
-    if cwl['workflow'] is not None:
-        workflow = Workflow(cwl['workflow'])
-        wdl_workflow = WdlWorkflowGenerator(workflow)
-        wdl_parts.append(wdl_workflow.generate_wdl())
+    if parsed_cwl.workflow is not None:
+        wdl_workflow = WdlWorkflowGenerator(parsed_cwl.workflow).generate_wdl()
+        wdl_parts.append(wdl_workflow)
 
     wdl_doc = "\n".join(wdl_parts)
     print(wdl_doc)

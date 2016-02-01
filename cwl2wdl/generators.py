@@ -7,8 +7,6 @@ from __future__ import unicode_literals
 
 import re
 
-from cwl2wdl.task import Task
-
 
 class WdlTaskGenerator(object):
     def __init__(self, task):
@@ -35,7 +33,7 @@ task %s {
         self.outputs = task.outputs
         self.runtime = task.requirements
 
-    def format_inputs(self):
+    def __format_inputs(self):
         inputs = []
         template = "%s %s"
         for var in self.inputs:
@@ -48,7 +46,7 @@ task %s {
                                       var.name))
         return "\n    ".join(inputs)
 
-    def format_command(self):
+    def __format_command(self):
         command_position = [0]
         command_parts = [self.command.baseCommand]
 
@@ -104,7 +102,7 @@ task %s {
 
         return " \\\n        ".join(ordered_command_parts)
 
-    def format_outputs(self):
+    def __format_outputs(self):
         outputs = []
         template = "%s %s = %s"
         for var in self.outputs:
@@ -113,7 +111,7 @@ task %s {
                                        var.output))
         return "\n        ".join(outputs)
 
-    def format_runtime(self):
+    def __format_runtime(self):
         template = "%s: %s"
         requirements = []
         for requirement in self.runtime:
@@ -125,13 +123,13 @@ task %s {
         return "\n        ".join(requirements)
 
     def generate_wdl(self):
-        wdl = self.template % (self.name, self.format_inputs(),
-                               self.format_command(), self.format_outputs(),
-                               self.format_runtime())
+        wdl = self.template % (self.name, self.__format_inputs(),
+                               self.__format_command(), self.__format_outputs(),
+                               self.__format_runtime())
 
         # if no relavant runtime variables are specified remove that
         # section from the template
-        if self.format_runtime() == '':
+        if self.__format_runtime() == '':
             no_runtime = "\s+runtime {\s+}"
             wdl = re.sub(no_runtime, "", wdl)
 
@@ -154,7 +152,7 @@ workflow %s {
         self.task_ids = []
         self.imported_tasks = []
 
-    def format_inputs(self):
+    def __format_inputs(self):
         inputs = []
         template = "{0} {1}"
         for var in self.inputs:
@@ -167,14 +165,14 @@ workflow %s {
                                           var.name))
         return "\n    ".join(inputs)
 
-    def format_steps(self):
+    def __format_steps(self):
         steps = []
         for step in self.steps:
             self.task_ids.append(step.task_id)
 
             if step.task_definition is not None:
                 self.imported_tasks.append(
-                    WdlTaskGenerator(Task(step.task_definition)).generate_wdl()
+                    WdlTaskGenerator(step.task_definition).generate_wdl()
                 )
 
             if step.inputs != []:
@@ -198,6 +196,6 @@ workflow %s {
 
     def generate_wdl(self):
         wdl = self.template % ("\n".join(self.imported_tasks), self.name,
-                               self.format_inputs(), self.format_steps())
+                               self.__format_inputs(), self.__format_steps())
 
         return wdl
