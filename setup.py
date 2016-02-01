@@ -9,7 +9,6 @@ with open(path.join(here, "README.md"), encoding="utf-8") as readmeFile:
 setup(
     name="cwl2wdl",
     description="Convert a CWL tool and workflow description to its WDL representation",
-    license='MIT',
     long_description=long_description,
     packages=["cwl2wdl"],
     include_package_data=True,
@@ -20,7 +19,6 @@ setup(
     classifiers=[
         'Development Status :: 3 - Alpha',
         'Intended Audience :: Science/Research',
-        'License :: OSI Approved :: MIT License',
         'Natural Language :: English',
         'Programming Language :: Python :: 2.7',
         'Topic :: Scientific/Engineering :: Bio-Informatics',
