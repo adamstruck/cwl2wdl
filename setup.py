@@ -15,7 +15,7 @@ setup(
     zip_safe=False,
     author="Adam Struck",
     author_email="strucka@ohsu.edu",
-    url="https://github.com/adamstruck/cwl2wdl",    
+    url="https://github.com/adamstruck/cwl2wdl",
     classifiers=[
         'Development Status :: 3 - Alpha',
         'Intended Audience :: Science/Research',
