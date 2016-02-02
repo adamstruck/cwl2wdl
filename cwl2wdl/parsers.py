@@ -101,7 +101,7 @@ class CwlParser(object):
                 is_required = True
 
         elif isinstance(input_type, dict):
-            is_required = check_if_required(input_type['type'])
+            is_required = self.__check_if_required(input_type['type'])
 
         elif isinstance(input_type, str):
             if input_type == 'null':
@@ -135,12 +135,11 @@ class CwlParser(object):
 
         elif isinstance(input_type, list):
             if 'null' in input_type:
-                # keep the non-null type
-                input_type.remove('null')
-                cwl_type = input_type[0]
+                # select the non-null type
+                cwl_type = [i for i in input_type if i != 'null'][0]
 
             if isinstance(cwl_type, dict):
-                if input_type['type'] == "array":
+                if cwl_type['type'] == "array":
                     cwl_type = "-".join([cwl_type['type'],
                                          cwl_type['items']])
 
@@ -216,6 +215,8 @@ class CwlParser(object):
         inputs = []
         for cwl_input in cwl_inputs:
             name = cwl_input['id'].strip("#")
+            is_required = self.__check_if_required(cwl_input['type'])
+            variable_type = self.__remap_type_cwl2wdl(cwl_input['type'])
 
             if 'inputBinding' in cwl_input:
                 inputBinding = self.__parse_cwl_command_line_binding(cwl_input['inputBinding'])
@@ -240,10 +241,6 @@ class CwlParser(object):
             else:
                 default = None
 
-            # Types need to be remapped
-            variable_type = self.__remap_type_cwl2wdl(cwl_input['type'])
-            is_required = self.__check_if_required(cwl_input['type'])
-
             parsed_input = {"name": name, "variable_type": variable_type,
                             "is_required": is_required, "prefix": prefix,
                             "position": position, "separator": separator,
@@ -254,6 +251,10 @@ class CwlParser(object):
     def __parse_cwl_outputs(self, cwl_outputs):
         outputs = []
         for cwl_output in cwl_outputs:
+            name = cwl_output['id'].strip("#")
+            is_required = self.__check_if_required(cwl_output['type'])
+            variable_type = self.__remap_type_cwl2wdl(cwl_output['type'])
+
             if 'outputBinding' in cwl_output:
                 if 'glob' in cwl_output['outputBinding']:
                     if isinstance(cwl_output['outputBinding']['glob'], str):
@@ -268,10 +269,6 @@ class CwlParser(object):
                 output = cwl_output['path']
             else:
                 output = None
-
-            name = cwl_output['id'].strip("#")
-            is_required = self.__check_if_required(cwl_output['type'])
-            variable_type = self.__remap_type_cwl2wdl(cwl_output['type'])
 
             parsed_output = {"name": name,
                              "variable_type": variable_type,
