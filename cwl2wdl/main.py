@@ -1,18 +1,7 @@
 """
 Convert a CWL task definition into a WDL representation.
-
-Usage:
-    cwl2wdl FILE
-    cwl2wdl (-h | --help)
-    cwl2wdl --version
-
-Arguments:
-    FILE       CWL input file
-
-Options:
-    -h --help
-    --version  Show version.
 """
+
 from __future__ import division
 from __future__ import print_function
 from __future__ import unicode_literals
@@ -20,7 +9,8 @@ from __future__ import unicode_literals
 import os
 import warnings
 
-from docopt import docopt
+import argparse
+import wdl.parser
 
 import cwl2wdl
 from cwl2wdl.generators import WdlTaskGenerator, WdlWorkflowGenerator
@@ -35,16 +25,38 @@ warnings.formatwarning = lambda message, category, filename, lineno, line=None:\
                                             lineno, line='')
 
 
-def cli():
-    arguments = docopt(__doc__, version=str(cwl2wdl.__version__))
+def collect_args():
+    parser = argparse.ArgumentParser(
+        prog="cwl2wdl",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter
+    )
+    parser._optionals.title = "Options"
+    parser.add_argument("FILE", type=str, help="CWL file.")
+    parser.add_argument("-f", "--format", type=str, default="wdl",
+                        choices=["wdl", "ast"],
+                        help="specify the output format")
+    parser.add_argument("--validate", action="store_true",
+                        help="validate the resulting WDL code with PyWDL")
+    parser.add_argument("--version", action='version',
+                        version=str(cwl2wdl.__version__))
+    return parser
 
-    if os.path.exists(arguments['FILE']):
+
+class ValidationError(Exception):
+    pass
+
+
+def cli():
+    parser = collect_args()
+    arguments = parser.parse_args()
+
+    if os.path.exists(arguments.FILE):
         pass
     else:
-        raise IOError("%s does not exist." % (arguments['FILE']))
+        raise IOError("%s does not exist." % (arguments.FILE))
 
     parsed_cwl = ParsedDocument(
-        CwlParser(arguments['FILE']).parse_document()
+        CwlParser(arguments.FILE).parse_document()
     )
 
     wdl_parts = []
@@ -57,5 +69,17 @@ def cli():
         wdl_workflow = WdlWorkflowGenerator(parsed_cwl.workflow).generate_wdl()
         wdl_parts.append(wdl_workflow)
 
-    wdl_doc = "\n".join(wdl_parts)
-    print(wdl_doc)
+    wdl_doc = str("\n".join(wdl_parts))
+
+    if arguments.validate:
+        try:
+            wdl.parser.parse(wdl_doc)
+        except Exception as e:
+            raise e
+
+    if arguments.format == "wdl":
+        print(wdl_doc)
+    elif arguments.format == "ast":
+        warnings.warn("By specifying 'ast' format you are implicity imposing validation.")
+        ast = wdl.parser.parse(wdl_doc).ast()
+        print(ast.dumps(indent=2))

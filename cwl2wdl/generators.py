@@ -83,7 +83,7 @@ task %s {
                     prefix = ""
                     command_input_template = "    %s%s"
                 else:
-                    prefix = command_input.prefix                   
+                    prefix = command_input.prefix
                     command_input_template = "    ${%s + %s}"
 
             # store input postion if provided.

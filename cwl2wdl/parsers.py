@@ -44,9 +44,9 @@ class CwlParser(object):
 
     def __parse_cwl_task(self, cwl_task, sourceDir):
         if 'label' in cwl_task:
-            name = re.sub(" ", "_", cwl_task['label'])
+            name = re.sub("( |\.)", "_", cwl_task['label'])
         elif 'id' in cwl_task:
-            name = re.sub(" ", "_", cwl_task['id']).strip("#")
+            name = re.sub("( |\.)", "_", cwl_task['id']).strip("#")
         else:
             name = "_".join(cwl_task['baseCommand'])
 
@@ -71,9 +71,9 @@ class CwlParser(object):
 
     def __parse_cwl_workflow(self, cwl_workflow, sourceDir, parentFileName):
         if 'label' in cwl_workflow:
-            name = re.sub(" ", "_", cwl_workflow['label'])
+            name = re.sub("( |\.)", "_", cwl_workflow['label'])
         elif 'id' in cwl_workflow:
-            name = re.sub(" ", "_", cwl_workflow['id']).strip("#")
+            name = re.sub("( |\.)", "_", cwl_workflow['id']).strip("#")
         else:
             name = parentFileName
 
