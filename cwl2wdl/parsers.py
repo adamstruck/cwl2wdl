@@ -50,6 +50,8 @@ class CwlParser(object):
         else:
             name = "_".join(cwl_task['baseCommand'])
 
+        name = self.__check_variable_value_for_reserved_syntax(name)
+
         if 'arguments' in cwl_task:
             arguments = self.__parse_cwl_arguments(cwl_task['arguments'])
         else:
@@ -66,8 +68,29 @@ class CwlParser(object):
         else:
             requirements = []
 
+        if 'stdout' in cwl_task:
+            if isinstance(cwl_task['stdout'], str):
+                stdout = self.__check_variable_value_for_reserved_syntax(
+                    re.sub("(inputs\.|^\$\(|\)$)", "", cwl_task['stdout'])
+                )
+            else:
+                warnings.warn("Can't evaluate expression: %s in stdout" % (cwl_task['stdout']))
+                stdout = str(cwl_task['stdout'])
+        else:
+            stdout = None
+
+        if 'stdin' in cwl_task:
+            if isinstance(cwl_task['stdin'], str):
+                stdin = cwl_task['stdin']
+            else:
+                warnings.warn("Can't evaluate expression: %s in stdin" % (cwl_task['stdin']))
+                stdin = str(cwl_task['stdin'])
+        else:
+            stdin = None
+
         return {"name": name, "baseCommand": baseCommand, "arguments": arguments,
-                "inputs": inputs, "outputs": outputs, "requirements": requirements}
+                "inputs": inputs, "outputs": outputs, "requirements": requirements,
+                "stdin": stdin, "stdout": stdout}
 
     def __parse_cwl_workflow(self, cwl_workflow, sourceDir, parentFileName):
         if 'label' in cwl_workflow:
@@ -76,6 +99,8 @@ class CwlParser(object):
             name = re.sub("( |\.)", "_", cwl_workflow['id']).strip("#")
         else:
             name = parentFileName
+
+        name = self.__check_variable_value_for_reserved_syntax(name)
 
         inputs = self.__parse_cwl_inputs(cwl_workflow['inputs'])
         outputs = self.__parse_cwl_outputs(cwl_workflow['outputs'])
@@ -90,82 +115,8 @@ class CwlParser(object):
                 "steps": steps, "requirements": requirements}
 
     ############################
-    # Helper functions
+    # sub-section parsers
     ############################
-
-    def __check_if_required(self, input_type):
-        if isinstance(input_type, list):
-            if 'null' in input_type:
-                is_required = False
-            else:
-                is_required = True
-
-        elif isinstance(input_type, dict):
-            is_required = self.__check_if_required(input_type['type'])
-
-        elif isinstance(input_type, str):
-            if input_type == 'null':
-                is_required = False
-            else:
-                is_required = True
-
-        return is_required
-
-    def __remap_type_cwl2wdl(self, input_type):
-        "Remaps CWL types to WDL types. Also determines if variable is required."
-        # Map Literals not currently supported
-        # Key is CWL type
-        # Value is corresponding WDL type
-        type_map = {"File": "File",
-                    "string": "String",
-                    "boolean": "Boolean",
-                    "int": "Int",
-                    "long": "Float",
-                    "float": "Float",
-                    "double": "Float",
-                    "array-File": "Array[File]",
-                    "array-string": "Array[String]",
-                    "array-int": "Array[Int]",
-                    "array-long": "Array[Float]",
-                    "array-float": "Array[Float]",
-                    "array-double": "Array[Float]"}
-
-        if isinstance(input_type, str):
-            cwl_type = input_type
-
-        elif isinstance(input_type, list):
-            if 'null' in input_type:
-                # select the non-null type
-                cwl_type = [i for i in input_type if i != 'null'][0]
-
-            if isinstance(cwl_type, dict):
-                if cwl_type['type'] == "array":
-                    cwl_type = "-".join([cwl_type['type'],
-                                         cwl_type['items']])
-
-                elif cwl_type['type'] == "enum":
-                    raise KeyError('Unsupported CWL type: enum')
-
-                elif cwl_type['type'] == "record":
-                    raise KeyError('Unsupported CWL type: record')
-
-        elif isinstance(input_type, dict):
-            if input_type['type'] == "array":
-                cwl_type = "-".join([input_type['type'],
-                                     input_type['items']])
-
-            elif input_type['type'] == "enum":
-                raise KeyError('Unsupported CWL type: enum')
-
-            elif input_type['type'] == "record":
-                raise KeyError('Unsupported CWL type: record')
-
-        try:
-            variable_type = type_map[cwl_type]
-            return variable_type
-        except KeyError:
-            raise KeyError('Unrecognized CWL type: %s' % (cwl_type))
-
     def __parse_cwl_command_line_binding(self, command_line_binding):
         if 'prefix' in command_line_binding:
             prefix = command_line_binding['prefix']
@@ -214,7 +165,9 @@ class CwlParser(object):
     def __parse_cwl_inputs(self, cwl_inputs):
         inputs = []
         for cwl_input in cwl_inputs:
-            name = cwl_input['id'].strip("#")
+            name = self.__check_variable_value_for_reserved_syntax(
+                cwl_input['id'].strip("#")
+            )
             is_required = self.__check_if_required(cwl_input['type'])
             variable_type = self.__remap_type_cwl2wdl(cwl_input['type'])
 
@@ -229,6 +182,9 @@ class CwlParser(object):
                 position = None
                 separator = None
                 value = None
+
+            if variable_type.startswith("Array") and separator is None:
+                separator = " "
 
             if 'default' in cwl_input:
                 default = str(cwl_input['default'])
@@ -251,23 +207,28 @@ class CwlParser(object):
     def __parse_cwl_outputs(self, cwl_outputs):
         outputs = []
         for cwl_output in cwl_outputs:
-            name = cwl_output['id'].strip("#")
+            name = self.__check_variable_value_for_reserved_syntax(
+                cwl_output['id'].strip("#")
+            )
             is_required = self.__check_if_required(cwl_output['type'])
             variable_type = self.__remap_type_cwl2wdl(cwl_output['type'])
 
             if 'outputBinding' in cwl_output:
                 if 'glob' in cwl_output['outputBinding']:
                     if isinstance(cwl_output['outputBinding']['glob'], str):
-                        output = 'glob(\'%s\')' % (cwl_output['outputBinding']['glob'])
+                        value = self.__check_variable_value_for_reserved_syntax(
+                            re.sub("(inputs\.|^\$\(|\)$)", "", cwl_output['outputBinding']['glob'])
+                        )
+                        output = 'glob(\'${%s}\')' % (value)
                     else:
-                        warnings.warn("Cannot evaluate expression within outputBinding.")
-                        output = 'glob(\'%s\')' % (cwl_output['outputBinding']['glob'])
+                        warnings.warn("Cannot evaluate expression within a 'glob' outputBinding.")
+                        output = 'glob(\'${%s}\')' % (cwl_output['outputBinding']['glob'])
                 else:
                     warnings.warn("Unsupported outputBinding: %s" % (cwl_output['outputBinding']))
                     output = cwl_output['outputBinding']
-            elif 'path' in cwl_output:
-                output = cwl_output['path']
+
             else:
+                warnings.warn("Not sure how to handle this output: %s" % (cwl_output))
                 output = None
 
             parsed_output = {"name": name,
@@ -355,8 +316,7 @@ class CwlParser(object):
                 task_id = re.sub('(\.cwl|#)', '', os.path.basename(step['run']))
                 to_import = None
                 import_statement = None
-
-            print(to_import)
+            
             if to_import is not None:
                 if os.path.exists(to_import):
                     file_to_import = to_import
@@ -402,3 +362,89 @@ class CwlParser(object):
     def __expression_converter(self, expression):
         # TODO
         pass
+
+    ############################
+    # Helper functions
+    ############################
+    def __check_variable_value_for_reserved_syntax(self, variable):
+        wdl_reserved_words = ("call", "task", "workflow", "import", "input",
+                              "output", "as", "if", "while", "runtime",
+                              "scatter", "command", "parameter_meta", "meta",
+                              "default", "sep", "prefix")
+        if variable in wdl_reserved_words:
+            return "_".join([variable, "variable"])
+        else:
+            return variable
+
+    def __check_if_required(self, input_type):
+        if isinstance(input_type, list):
+            if 'null' in input_type:
+                is_required = False
+            else:
+                is_required = True
+
+        elif isinstance(input_type, dict):
+            is_required = self.__check_if_required(input_type['type'])
+
+        elif isinstance(input_type, str):
+            if input_type == 'null':
+                is_required = False
+            else:
+                is_required = True
+
+        return is_required
+
+    def __remap_type_cwl2wdl(self, input_type):
+        "Remaps CWL types to WDL types. Also determines if variable is required."
+        # Map Literals not currently supported
+        # Key is CWL type
+        # Value is corresponding WDL type
+        type_map = {"File": "File",
+                    "string": "String",
+                    "boolean": "Boolean",
+                    "int": "Int",
+                    "long": "Float",
+                    "float": "Float",
+                    "double": "Float",
+                    "array-File": "Array[File]",
+                    "array-string": "Array[String]",
+                    "array-int": "Array[Int]",
+                    "array-long": "Array[Float]",
+                    "array-float": "Array[Float]",
+                    "array-double": "Array[Float]"}
+
+        if isinstance(input_type, str):
+            cwl_type = input_type
+
+        elif isinstance(input_type, list):
+            if 'null' in input_type:
+                # select the non-null type
+                cwl_type = [i for i in input_type if i != 'null'][0]
+
+            if isinstance(cwl_type, dict):
+                if cwl_type['type'] == "array":
+                    cwl_type = "-".join([cwl_type['type'],
+                                         cwl_type['items']])
+
+                elif cwl_type['type'] == "enum":
+                    raise KeyError('Unsupported CWL type: enum')
+
+                elif cwl_type['type'] == "record":
+                    raise KeyError('Unsupported CWL type: record')
+
+        elif isinstance(input_type, dict):
+            if input_type['type'] == "array":
+                cwl_type = "-".join([input_type['type'],
+                                     input_type['items']])
+
+            elif input_type['type'] == "enum":
+                raise KeyError('Unsupported CWL type: enum')
+
+            elif input_type['type'] == "record":
+                raise KeyError('Unsupported CWL type: record')
+
+        try:
+            variable_type = type_map[cwl_type]
+            return variable_type
+        except KeyError:
+            raise KeyError('Unrecognized CWL type: %s' % (cwl_type))

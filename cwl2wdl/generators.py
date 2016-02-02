@@ -31,7 +31,9 @@ task %s {
         self.inputs = task.inputs
         self.command = task.command
         self.outputs = task.outputs
-        self.runtime = task.requirements
+        self.requirements = task.requirements
+        self.stdin = task.stdin
+        self.stdout = task.stdout
 
     def __format_inputs(self):
         inputs = []
@@ -51,16 +53,15 @@ task %s {
         command_parts = [self.command.baseCommand]
 
         for arg in self.command.arguments:
-            command_position.append(
-                int(0 if arg.position is None else arg.position) + 1
-            )
+            command_position.append(arg.position)
 
             if arg.prefix is not None:
-                arg_template = "    %s %s"
+                arg_template = "%s %s"
                 prefix = arg.prefix
             else:
-                arg_template = "    %s%s"
+                arg_template = "%s%s"
                 prefix = ""
+
             if arg.value is not None:
                 value = arg.value
             else:
@@ -69,36 +70,59 @@ task %s {
             formatted_arg = arg_template % (prefix, value)
             command_parts.append(formatted_arg)
 
-        input_offset = max(command_position)
         for command_input in self.command.inputs:
-            if command_input.is_required:
-                if command_input.prefix is None:
-                    prefix = ""
-                    command_input_template = "    %s%s"
+            # Some CWL inputs map be mapped to expressions
+            # not quite sure how to handle these situations yet
+            if command_input.variable_type == 'Boolean':
+                if command_input.default == "False":
+                    continue
+                elif command_input.prefix is None:
+                    continue
                 else:
-                    prefix = command_input.prefix
-                    command_input_template = "    %s %s"
+                    pass
+
+            if command_input.name == self.stdout:
+                continue
+
+            # more standard cases
+            if command_input.prefix is None:
+                prefix = ""
+                command_input_template = "%s${%s}"
             else:
-                if command_input.prefix is None:
-                    prefix = ""
-                    command_input_template = "    %s%s"
+                prefix = command_input.prefix
+                if command_input.is_required:
+                    command_input_template = "%s ${%s}"
                 else:
-                    prefix = command_input.prefix
-                    command_input_template = "    ${%s + %s}"
+                    command_input_template = "${%s + %s}"
+
+            if command_input.variable_type.startswith("Array"):
+                sep = "sep=\'%s\' " % (command_input.separator)
+            else:
+                sep = ""
+
+            if command_input.default is not None:
+                default = "default=\'%s\' " % (command_input.default)
+            else:
+                default = ""
+
+            # prefix will be handled in the same way in the future
+            # wdl4s and cromwell dont support this yet
+            name = sep + default + command_input.name
 
             # store input postion if provided.
             # inputs come after teh base command and arguments
-            command_position.append(
-                int(0 if command_input.position is None else command_input.position) + input_offset
-            )
+            command_position.append(command_input.position)
 
             command_parts.append(
-                command_input_template % (prefix, command_input.name)
+                command_input_template % (prefix, name)
             )
 
         cmd_order = [i[0] for i in sorted(enumerate(command_position),
                                           key=lambda x: (x[1] is None, x[1]))]
         ordered_command_parts = [command_parts[i] for i in cmd_order]
+
+        if self.stdout is not None:
+            ordered_command_parts.append("> ${%s}" % (self.stdout))
 
         return " \\\n        ".join(ordered_command_parts)
 
@@ -112,9 +136,9 @@ task %s {
         return "\n        ".join(outputs)
 
     def __format_runtime(self):
-        template = "%s: %s"
+        template = "%s: \'%s\'"
         requirements = []
-        for requirement in self.runtime:
+        for requirement in self.requirements:
             if (requirement.requirement_type is None) or (requirement.value is None):
                 continue
             else:

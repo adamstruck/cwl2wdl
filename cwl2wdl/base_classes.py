@@ -10,6 +10,8 @@ from __future__ import unicode_literals
 class ParsedDocument(object):
     """Expects a parsed CWL document"""
     def __init__(self, parsed_doc):
+        self.imports = None
+
         if (parsed_doc['tasks'] is None) and (parsed_doc['workflows'] is None):
             raise ImportError("Cannot convert NoneType to ParsedDocumentType.")
 
@@ -42,6 +44,8 @@ class Task(object):
         self.inputs = [Input(i) for i in parsed_task['inputs']]
         self.outputs = [Output(o) for o in parsed_task['outputs']]
         self.requirements = [Requirement(r) for r in parsed_task['requirements']]
+        self.stdin = parsed_task['stdin']
+        self.stdout = parsed_task['stdout']
 
 
 class Input(object):
@@ -61,6 +65,7 @@ class Command(object):
             self.baseCommand = " ".join(baseCommand)
         else:
             self.baseCommand = baseCommand
+
         self.arguments = [Argument(a) for a in arguments]
         self.inputs = [Input(i) for i in inputs]
 
