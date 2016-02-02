@@ -73,13 +73,13 @@ def cli():
 
     if arguments.validate:
         try:
-            wdl.parser.parse(wdl_doc)
+            is_validated = wdl.parser.parse(wdl_doc)
         except Exception as e:
             raise e
 
-    if arguments.format == "wdl":
-        print(wdl_doc)
-    elif arguments.format == "ast":
+    if arguments.format == "ast":
         warnings.warn("By specifying 'ast' format you are implicity imposing validation.")
         ast = wdl.parser.parse(wdl_doc).ast()
         print(ast.dumps(indent=2))
+    else:
+        print(wdl_doc)
