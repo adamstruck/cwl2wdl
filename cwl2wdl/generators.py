@@ -147,7 +147,7 @@ task %s {
         template = "%s: \'%s\'"
         requirements = []
         for requirement in self.requirements:
-            if (requirement.requirement_type is None) or (requirement.value is None):
+            if (requirement.requirement_type is None) or (requirement.value is None) or (requirement.requirement_type == "envVar"):
                 continue
             else:
                 requirements.append(template % (requirement.requirement_type,
