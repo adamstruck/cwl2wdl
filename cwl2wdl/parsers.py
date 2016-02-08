@@ -61,10 +61,19 @@ class CwlParser(object):
         inputs = self.__parse_cwl_inputs(cwl_task['inputs'])
         outputs = self.__parse_cwl_outputs(cwl_task['outputs'])
 
-        if 'requirements' in cwl_task:
-            requirements = self.__parse_cwl_requirements(cwl_task['requirements'], sourceDir)
+        if ('requirements' in cwl_task) and ('hints' in cwl_task):
+            requirements = self.__parse_cwl_requirements(
+                cwl_task['requirements'] + cwl_task['hints'],
+                sourceDir
+            )
+        elif 'requirements' in cwl_task:
+            requirements = self.__parse_cwl_requirements(
+                cwl_task['requirements'], sourceDir
+            )
         elif 'hints' in cwl_task:
-            requirements = self.__parse_cwl_requirements(cwl_task['hints'], sourceDir)
+            requirements = self.__parse_cwl_requirements(
+                cwl_task['hints'], sourceDir
+            )
         else:
             requirements = []
 
@@ -106,10 +115,21 @@ class CwlParser(object):
         outputs = self.__parse_cwl_outputs(cwl_workflow['outputs'])
         steps = self.__parse_cwl_workflow_steps(cwl_workflow['steps'], sourceDir)
 
-        if 'requirements' in cwl_workflow:
-            requirements = self.__parse_cwl_requirements(cwl_workflow['requirements'], sourceDir)
+        if ('requirements' in cwl_workflow) and ('hints' in cwl_workflow):
+            requirements = self.__parse_cwl_requirements(
+                cwl_workflow['requirements'] + cwl_workflow['hints'],
+                sourceDir
+            )
+        elif 'requirements' in cwl_workflow:
+            requirements = self.__parse_cwl_requirements(
+                cwl_workflow['requirements'], sourceDir
+            )
+        elif 'hints' in cwl_workflow:
+            requirements = self.__parse_cwl_requirements(
+                cwl_workflow['hints'], sourceDir
+            )
         else:
-            requirements = [{"requirement_type": None, "value": None}]
+            requirements = []
 
         return {"name": name, "inputs": inputs, "outputs": outputs,
                 "steps": steps, "requirements": requirements}
@@ -241,8 +261,8 @@ class CwlParser(object):
     def __parse_cwl_requirements(self, cwl_requirements, sourceDir=None):
         requirements = []
         for cwl_requirement in cwl_requirements:
-            # check for docker requirement
             if 'class' in cwl_requirement:
+                # docker
                 if cwl_requirement['class'] == 'DockerRequirement':
                     requirement_type = "docker"
                     if 'dockerImageId' in cwl_requirement:
@@ -254,11 +274,23 @@ class CwlParser(object):
                         warnings.warn(
                             "Unsupported docker requirement type: %s" % (" ".join(req_type_err)))
                         continue
+                # enviroment variables
+                elif cwl_requirement['class'] == 'EnvVarRequirement':
+                    requirement_type = "envVar"
+                    value = []
+                    for envar in cwl_requirement['envDef']:
+                        value.append([envar['envName'], envar['envValue']])
+
+                # hard/soft system requirements
+                elif cwl_requirement['class'] == 'ResourceRequirement':
+                    warnings.warn("Resource requirements are not currently supported.")
+                    continue
+
                 # inline javascript is not supported
                 elif cwl_requirement['class'] == 'InlineJavascriptRequirement':
-                    warnings.warn("This CWL file may contain InlineJavascript code."
-                                  " WDL does not support this feature.")
+                    warnings.warn("'InlineJavascript' requirement is not supported.")
                     continue
+
                 else:
                     warnings.warn("The CWL requirement class: %s, is not supported" % (cwl_requirement['class']))
                     continue
@@ -316,7 +348,7 @@ class CwlParser(object):
                 task_id = re.sub('(\.cwl|#)', '', os.path.basename(step['run']))
                 to_import = None
                 import_statement = None
-            
+
             if to_import is not None:
                 if os.path.exists(to_import):
                     file_to_import = to_import

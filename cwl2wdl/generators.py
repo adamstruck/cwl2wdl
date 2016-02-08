@@ -110,7 +110,7 @@ task %s {
             name = sep + default + command_input.name
 
             # store input postion if provided.
-            # inputs come after teh base command and arguments
+            # inputs come after the base command and arguments
             command_position.append(command_input.position)
 
             command_parts.append(
@@ -121,6 +121,14 @@ task %s {
                                           key=lambda x: (x[1] is None, x[1]))]
         ordered_command_parts = [command_parts[i] for i in cmd_order]
 
+        for req in self.requirements:
+            if req.requirement_type == "envVar":
+                ordered_command_parts.insert(
+                    0,
+                    " ".join(["%s=\'%s\'" % (envvar[0], envvar[1]) for envvar in req.value])
+                )
+
+        # check if stdout is supposed to be captured to a file
         if self.stdout is not None:
             ordered_command_parts.append("> ${%s}" % (self.stdout))
 
