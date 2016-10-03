@@ -57,6 +57,7 @@ class Input(object):
         self.default = input_dict['default']
         self.variable_type = input_dict['variable_type']
         self.is_required = input_dict['is_required']
+        self.separate = input_dict.get("separate", True)
 
 
 class Command(object):

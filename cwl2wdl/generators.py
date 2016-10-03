@@ -56,7 +56,7 @@ task %s {
             command_position.append(arg.position)
 
             if arg.prefix is not None:
-                arg_template = "%s %s"
+                arg_template = "%s %s" if arg.separate else "%s%s"
                 prefix = arg.prefix
             else:
                 arg_template = "%s%s"
@@ -91,7 +91,7 @@ task %s {
             else:
                 prefix = command_input.prefix
                 if command_input.is_required:
-                    command_input_template = "%s ${%s}"
+                    command_input_template = "%s ${%s}" if command_input.separate else "%s${%s}"
                 else:
                     command_input_template = "${%s + %s}"
 
@@ -171,11 +171,11 @@ task %s {
 class WdlWorkflowGenerator(object):
     def __init__(self, workflow):
         self.template = """
-%s
 workflow %s {
     %s
     %s
 }
+%s
 """
         self.name = workflow.name
         self.inputs = workflow.inputs
@@ -227,7 +227,7 @@ workflow %s {
         return "\n".join(steps)
 
     def generate_wdl(self):
-        wdl = self.template % ("\n".join(self.imported_tasks), self.name,
-                               self.__format_inputs(), self.__format_steps())
+        wdl = self.template % (self.name, self.__format_inputs(), self.__format_steps(),
+                               "\n".join(self.imported_tasks))
 
         return wdl
