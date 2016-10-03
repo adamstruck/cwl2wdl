@@ -98,14 +98,25 @@ class Workflow(object):
         self.inputs = [Input(i) for i in parsed_workflow['inputs']]
         self.outputs = [Output(o) for o in parsed_workflow['outputs']]
         self.steps = [Step(s) for s in parsed_workflow['steps']]
+        self.subworkflows = [SubWorkflow(w) for w in parsed_workflow.get("subworkflows", [])]
         self.requirements = [Requirement(r) for r in parsed_workflow['requirements']]
 
+class SubWorkflow(object):
+    """Step where we call a workflow from another workflow.
+    """
+    def __init__(self, step):
+        self.step_type = "workflow"
+        self.task_id = step["id"]
+        self.task_definition = Workflow(step["definition"])
+        self.inputs = [StepInput(i) for i in step['inputs']]
+        self.outputs = [StepOutput(o) for o in step['outputs']]
 
 class Step(object):
     def __init__(self, workflow_step):
+        self.step_type = "task"
         self.task_id = workflow_step['task_id']
         self.task_definition = Task(workflow_step['task_definition']) if workflow_step['task_definition'] is not None else None
-        self.import_statement = workflow_step['import_statement']
+        self.import_statement = workflow_step.get('import_statement', "")
         self.inputs = [StepInput(i) for i in workflow_step['inputs']]
         self.outputs = [StepOutput(o) for o in workflow_step['outputs']]
 

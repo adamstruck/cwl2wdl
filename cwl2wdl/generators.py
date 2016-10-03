@@ -181,6 +181,7 @@ workflow %s {
         self.inputs = workflow.inputs
         self.outputs = workflow.outputs
         self.steps = workflow.steps
+        self.subworkflows = workflow.subworkflows
         self.task_ids = []
         self.imported_tasks = []
 
@@ -199,13 +200,13 @@ workflow %s {
 
     def __format_steps(self):
         steps = []
-        for step in self.steps:
+        for step in self.steps + self.subworkflows:
             self.task_ids.append(step.task_id)
 
             if step.task_definition is not None:
-                self.imported_tasks.append(
-                    WdlTaskGenerator(step.task_definition).generate_wdl()
-                )
+                task_gen = (WdlTaskGenerator(step.task_definition) if step.step_type == "task"
+                            else WdlWorkflowGenerator(step.task_definition))
+                self.imported_tasks.append(task_gen.generate_wdl())
 
             if step.inputs != []:
                 step_template = """
