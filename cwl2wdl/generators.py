@@ -174,6 +174,7 @@ class WdlWorkflowGenerator(object):
 workflow %s {
     %s
     %s
+    %s
 }
 %s
 """
@@ -198,6 +199,17 @@ workflow %s {
                                           var.name))
         return "\n    ".join(inputs)
 
+    def __format_outputs(self):
+        if len(self.outputs) > 0:
+            template = """
+   output {
+     %s
+"""
+            outputs = []
+            for outp in self.outputs:
+                outputs.append(outp.name)
+            return template % "\n     ".join(outputs)
+
     def __format_steps(self):
         steps = []
         for step in self.steps + self.subworkflows:
@@ -211,14 +223,15 @@ workflow %s {
             if step.inputs != []:
                 step_template = """
     call %s {
-        inputs: %s
+        input: %s
     }
 """
                 inputs = []
-                for i in step.inputs:
+                for i, inp in enumerate(step.inputs):
+                    pad = "          " if i > 0 else ""
                     inputs.append(
-                        "%s = %s" % (re.sub(step.task_id + "\.", "", i.input_id),
-                                     i.value)
+                        "%s%s=%s" % (pad, re.sub(step.task_id + "\.", "", inp.input_id),
+                                     inp.value)
                     )
                 steps.append(step_template % (step.task_id,
                                               ", \n".join(inputs)))
@@ -229,6 +242,7 @@ workflow %s {
 
     def generate_wdl(self):
         wdl = self.template % (self.name, self.__format_inputs(), self.__format_steps(),
+                               self.__format_outputs(),
                                "\n".join(self.imported_tasks))
 
         return wdl
