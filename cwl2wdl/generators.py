@@ -233,12 +233,26 @@ workflow %s {
                         "%s%s=%s" % (pad, re.sub(step.task_id + "\.", "", inp.input_id),
                                      inp.value)
                     )
-                steps.append(step_template % (step.task_id,
-                                              ", \n".join(inputs)))
+                steps.append(self._format_scatter(step.scatter,
+                                                  step_template % (step.task_id, ", \n".join(inputs))))
             else:
                 step_template = "call %s"
-                steps.append(step_template % (step.task_id))
+                steps.append(self._format_scatter(step.scatter, step_template % (step.task_id)))
         return "\n".join(steps)
+
+    def _format_scatter(self, scatter, body):
+        """Add scatter information to a workflow step.
+        """
+        if scatter:
+            parts = ["  " + l for l in body.split("\n")]
+            scatter_parts = ["%s in %s" % (x, y) for x, y in scatter]
+            template = """
+    scatter (%s) {
+%s
+    }
+"""
+            body = template % ("\n             ".join(scatter_parts), "\n".join(parts))
+        return body
 
     def generate_wdl(self):
         wdl = self.template % (self.name, self.__format_inputs(), self.__format_steps(),

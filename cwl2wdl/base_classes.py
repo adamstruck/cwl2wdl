@@ -110,6 +110,7 @@ class SubWorkflow(object):
         self.task_definition = Workflow(step["definition"])
         self.inputs = [StepInput(i) for i in step['inputs']]
         self.outputs = [StepOutput(o) for o in step['outputs']]
+        self.scatter = step.get("scatter", [])
 
 class Step(object):
     def __init__(self, workflow_step):
@@ -119,6 +120,7 @@ class Step(object):
         self.import_statement = workflow_step.get('import_statement', "")
         self.inputs = [StepInput(i) for i in workflow_step['inputs']]
         self.outputs = [StepOutput(o) for o in workflow_step['outputs']]
+        self.scatter = workflow_step.get("scatter", [])
 
 
 class StepInput(object):
